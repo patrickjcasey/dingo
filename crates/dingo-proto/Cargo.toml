@@ -1,0 +1,23 @@
+[package]
+name = "dingo-proto"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "A high-performance DNS packet parser focused on speed and safety"
+keywords = ["dns", "parser", "network", "protocol", "no_std"]
+categories = ["network-programming", "parser-implementations", "no-std"]
+
+[features]
+default = ["std"]
+std = []
+
+[dependencies]
+
+[dev-dependencies]
+rand = "0.9.2"
+
+[[bench]]
+name = "parsing"
+harness = false

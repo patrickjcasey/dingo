@@ -1,0 +1,55 @@
+[package]
+name = "dingo-fuzz"
+version = "0.0.0"
+authors = ["Automatically generated"]
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+dingo-proto = { path = "../crates/dingo-proto" }
+
+# Prevent this from interfering with workspaces
+[workspace]
+members = ["."]
+
+[profile.release]
+debug = 1
+
+[[bin]]
+name = "parse_message"
+path = "fuzz_targets/parse_message.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "parse_header"
+path = "fuzz_targets/parse_header.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "parse_question"
+path = "fuzz_targets/parse_question.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "parse_rr"
+path = "fuzz_targets/parse_rr.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "parse_name"
+path = "fuzz_targets/parse_name.rs"
+test = false
+doc = false
+bench = false
