@@ -96,26 +96,57 @@ impl Message {
     /// assert_eq!(msg.questions.len(), 1);
     /// ```
     pub fn parse(data: &[u8]) -> Result<Self, ParseError> {
-        let (header, remainder) = Header::parse(data)?;
+        // 1. Parse the header
+        let (header, _remainder) = Header::parse(data)?;
 
-        // TODO: Implement message parsing
-        //
-        // 1. Parse the header using Header::parse
-        // 2. Get the counts from the header: qdcount, ancount, nscount, arcount
-        // 3. Starting at offset 12 (after header), parse:
-        //    a. `qdcount` questions using Question::parse
-        //    b. `ancount` answers using ResourceRecord::parse
-        //    c. `nscount` authorities using ResourceRecord::parse
-        //    d. `arcount` additionals using ResourceRecord::parse
-        // 4. If parsing runs out of data before all records are parsed,
-        //    return InvalidRecordCount or BufferTooShort
-        // 5. Return the complete Message
-        //
-        // Note: Each parse function returns the next offset, chain them together.
-        // Note: The counts in the header might be wrong (malicious packet),
-        //       so validate as you parse.
+        // 2. Get the counts from the header
+        let qdcount = header.qdcount() as usize;
+        let ancount = header.ancount() as usize;
+        let nscount = header.nscount() as usize;
+        let arcount = header.arcount() as usize;
 
-        todo!("Implement Message::parse")
+        // 3. Start parsing after the header (offset 12)
+        let mut offset = Header::SIZE;
+
+        // 3a. Parse questions
+        let mut questions = Vec::with_capacity(qdcount);
+        for _ in 0..qdcount {
+            let (question, next_offset) = Question::parse(data, offset)?;
+            questions.push(question);
+            offset = next_offset;
+        }
+
+        // 3b. Parse answers
+        let mut answers = Vec::with_capacity(ancount);
+        for _ in 0..ancount {
+            let (rr, next_offset) = ResourceRecord::parse(data, offset)?;
+            answers.push(rr);
+            offset = next_offset;
+        }
+
+        // 3c. Parse authorities
+        let mut authorities = Vec::with_capacity(nscount);
+        for _ in 0..nscount {
+            let (rr, next_offset) = ResourceRecord::parse(data, offset)?;
+            authorities.push(rr);
+            offset = next_offset;
+        }
+
+        // 3d. Parse additionals
+        let mut additionals = Vec::with_capacity(arcount);
+        for _ in 0..arcount {
+            let (rr, next_offset) = ResourceRecord::parse(data, offset)?;
+            additionals.push(rr);
+            offset = next_offset;
+        }
+
+        Ok(Self {
+            header,
+            questions,
+            answers,
+            authorities,
+            additionals,
+        })
     }
 
     /// Returns true if this message is a query (QR=0).
@@ -363,7 +394,7 @@ mod tests {
             0x00, 0x02,             // TYPE = NS
             0x00, 0x01,             // CLASS = IN
             0x00, 0x00, 0x0E, 0x10, // TTL = 3600
-            0x00, 0x06,             // RDLENGTH
+            0x00, 0x04,             // RDLENGTH = 4 (label len + "ns" + null)
             0x02, b'n', b's', 0x00, // "ns."
         ];
 
@@ -428,7 +459,7 @@ mod tests {
             0xC0, 0x0C,
             0x00, 0x02, 0x00, 0x01,
             0x00, 0x00, 0x0E, 0x10,
-            0x00, 0x05,
+            0x00, 0x04,             // RDLENGTH = 4 (label len + "ns" + null)
             0x02, b'n', b's', 0x00,
             // Additional: OPT
             0x00,
