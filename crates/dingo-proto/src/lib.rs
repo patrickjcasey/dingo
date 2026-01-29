@@ -1,31 +1,3 @@
-//! `dingo-proto` - A high-performance DNS packet parser
-//!
-//! This crate provides a fast and safe DNS message parser with a focus on
-//! correctness and resistance to malformed input.
-//!
-//! # Example
-//! ```
-//! use dingo_proto::{Message, ParseError};
-//!
-//! let packet = [
-//!     0x12, 0x34, // ID
-//!     0x01, 0x00, // Flags: standard query
-//!     0x00, 0x01, // QDCOUNT = 1
-//!     0x00, 0x00, // ANCOUNT = 0
-//!     0x00, 0x00, // NSCOUNT = 0
-//!     0x00, 0x00, // ARCOUNT = 0
-//!     // Question: example.com A IN
-//!     0x07, b'e', b'x', b'a', b'm', b'p', b'l', b'e',
-//!     0x03, b'c', b'o', b'm',
-//!     0x00,
-//!     0x00, 0x01, // QTYPE = A
-//!     0x00, 0x01, // QCLASS = IN
-//! ];
-//!
-//! let message = Message::parse(&packet).unwrap();
-//! assert!(message.is_query());
-//! ```
-
 #![cfg_attr(not(feature = "std"), no_std)]
 
 extern crate alloc;
@@ -38,10 +10,10 @@ mod question;
 mod rr;
 
 pub use error::ParseError;
-pub use message::Message;
-pub use name::Name;
-pub use question::Question;
-pub use rr::ResourceRecord;
+pub use message::{Message, MessageOwned, QuestionIter, ResourceRecordIter};
+pub use name::{LabelIter, Name, NameOwned};
+pub use question::{Question, QuestionOwned};
+pub use rr::{ResourceRecord, ResourceRecordOwned};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[repr(u8)]
@@ -103,7 +75,7 @@ pub enum ResponseCode {
     Reserved,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Header([u8; Self::SIZE]);
 
 impl Header {

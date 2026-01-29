@@ -3,6 +3,11 @@
 //! This module handles the parsing of DNS domain names as specified in RFC 1035
 //! Section 4.1.4, including support for message compression using pointers.
 //!
+//! # Type Variants
+//!
+//! - [`Name`] - Zero-copy borrowed type that references packet data
+//! - [`NameOwned`] - Owned type that stores labels in allocated vectors
+//!
 //! # Security
 //!
 //! Domain name parsing is security-critical. This implementation guards against:
@@ -11,8 +16,6 @@
 //! - Forward compression pointers
 //! - Label length overflow (max 63 octets)
 //! - Name length overflow (max 255 octets)
-
-use core::usize;
 
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -28,30 +31,51 @@ pub const MAX_NAME_LENGTH: usize = 255;
 /// Maximum compression pointer chain depth to prevent stack overflow.
 pub const MAX_POINTER_CHAIN: usize = 128;
 
-/// A parsed DNS domain name.
+/// A zero-copy borrowed DNS domain name.
 ///
+/// This type references the original packet data without allocation.
 /// Domain names in DNS are represented as a sequence of labels, where each label
 /// is a length-prefixed string. Names can use compression pointers to refer to
 /// previously occurring names in the message.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Name {
-    /// The labels that make up this domain name.
-    ///
-    /// For "example.com.", this would be ["example", "com"].
-    /// The root label (empty string) is implicit and not stored.
-    labels: Vec<Vec<u8>>,
+///
+/// # Example
+///
+/// ```ignore
+/// let packet = [
+///     0x07, b'e', b'x', b'a', b'm', b'p', b'l', b'e',
+///     0x03, b'c', b'o', b'm',
+///     0x00,
+/// ];
+/// let (name, end) = Name::parse(&packet, 0)?;
+/// assert_eq!(name.to_string(), "example.com.");
+///
+/// // Convert to owned for storage
+/// let owned: NameOwned = name.into_owned();
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Name<'a> {
+    /// The complete DNS packet data (needed for compression pointers).
+    packet: &'a [u8],
+    /// Offset where this name starts in the packet.
+    start: usize,
+    /// Offset immediately after the name in the original stream (not following pointers).
+    end: usize,
 }
 
-impl Name {
+impl<'a> Name<'a> {
     /// Parse a domain name from the packet data starting at the given offset.
     ///
     /// Returns the parsed name and the offset immediately after the name in the
     /// original data (not following compression pointers).
     ///
+    /// This method only validates that the name structure is valid; it does not
+    /// decompress the name. Use [`labels()`](Self::labels) to iterate over the
+    /// decompressed labels.
+    ///
     /// # Arguments
     ///
-    /// * `data` - The complete DNS packet data (needed for compression pointers)
-    /// * `offset` - The offset within `data` where the name starts
+    /// * `packet` - The complete DNS packet data (needed for compression pointers)
+    /// * `offset` - The offset within `packet` where the name starts
     ///
     /// # Errors
     ///
@@ -70,45 +94,60 @@ impl Name {
     ///     0x03, b'c', b'o', b'm',
     ///     0x00,
     /// ];
-    /// let (name, remainder) = Name::parse(&packet, 0)?;
+    /// let (name, end_offset) = Name::parse(&packet, 0)?;
     /// assert_eq!(name.to_string(), "example.com.");
-    /// assert_eq!(remainder, remainder.is_empty());
+    /// assert_eq!(end_offset, 13);
     /// ```
-    pub fn parse(packet: &[u8], offset: usize) -> Result<(Self, usize), ParseError> {
-        // PERF: can move to stack or allocate the correct amount?
-        let mut labels = Vec::new();
+    pub fn parse(packet: &'a [u8], offset: usize) -> Result<(Self, usize), ParseError> {
+        // Validate the name structure and find the end position
+        let end = Self::validate_and_find_end(packet, offset)?;
+
+        let name = Self {
+            packet,
+            start: offset,
+            end,
+        };
+        Ok((name, end))
+    }
+
+    /// Validates the name structure and returns the end position.
+    ///
+    /// This performs all security checks (loop detection, bounds checking, etc.)
+    /// without allocating memory.
+    fn validate_and_find_end(packet: &[u8], offset: usize) -> Result<usize, ParseError> {
+        let mut pos = offset;
+        let mut end_pos: Option<usize> = None;
         let mut total_len: usize = 0;
 
-        let mut pos = offset;
-
-        // The "end position" in the original stream - only set once when we hit a pointer
-        // This is what is returned, not where the pointer leads
-        let mut end_pos: Option<usize> = None;
-
-        // PERF: can move to stack or allocate the correct amount?
-        let mut visited = Vec::new();
+        // Use a fixed-size array for visited positions to avoid allocation
+        // We only need to track positions we've visited to detect loops
+        let mut visited = [0u16; MAX_POINTER_CHAIN];
+        let mut visited_count = 0;
 
         loop {
-            if visited.contains(&pos) {
-                return Err(ParseError::CompressionPointerLoop);
+            // Check for loops
+            let pos_u16 = pos as u16;
+            for i in 0..visited_count {
+                if visited[i] == pos_u16 {
+                    return Err(ParseError::CompressionPointerLoop);
+                }
             }
-            visited.push(pos);
 
-            // Prevent infinite loops (also catches excessive pointer chains)
-            if visited.len() > MAX_POINTER_CHAIN {
+            if visited_count >= MAX_POINTER_CHAIN {
                 return Err(ParseError::CompressionPointerLoop);
             }
+            visited[visited_count] = pos_u16;
+            visited_count += 1;
 
             if pos >= packet.len() {
                 return Err(ParseError::BufferTooShort);
             }
-            // TODO: get unchecked
+
             let length = packet[pos];
             match length & 0xC0 {
                 0x00 => {
                     if length == 0 {
                         // Root label - end of name
-                        // If we haven't followed a pointer, advance end_pos past the null
                         if end_pos.is_none() {
                             end_pos = Some(pos + 1);
                         }
@@ -126,23 +165,21 @@ impl Name {
                         return Err(ParseError::NameTooLong);
                     }
 
-                    let label_start = pos + 1;
-                    let label_end = label_start + label_len;
+                    let label_end = pos + 1 + label_len;
                     if label_end > packet.len() {
                         return Err(ParseError::BufferTooShort);
                     }
 
-                    labels.push(packet[label_start..label_end].to_vec());
                     pos = label_end;
                 }
-                // pointer compression
+                // Compression pointer
                 0xC0 => {
                     if pos + 1 >= packet.len() {
                         return Err(ParseError::BufferTooShort);
                     }
 
-                    // Extract the 14-bit offset
                     let ptr_offset = (((length & 0x3F) as usize) << 8) | (packet[pos + 1] as usize);
+
                     if ptr_offset >= packet.len() {
                         return Err(ParseError::CompressionPointerOutOfBounds);
                     }
@@ -163,13 +200,259 @@ impl Name {
             }
         }
 
-        total_len += 1;
+        total_len += 1; // Account for root label
         if total_len > MAX_NAME_LENGTH {
             return Err(ParseError::NameTooLong);
         }
 
-        let name = Self { labels };
-        Ok((name, end_pos.unwrap_or(pos)))
+        Ok(end_pos.unwrap_or(pos))
+    }
+
+    /// Returns an iterator over the labels of this domain name.
+    ///
+    /// Each item is a `Result<&'a [u8], ParseError>` to handle any parsing
+    /// errors that occur during iteration (though errors are unlikely if
+    /// `parse()` succeeded).
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let (name, _) = Name::parse(&packet, 0)?;
+    /// for label in name.labels() {
+    ///     let label = label?;
+    ///     println!("{}", String::from_utf8_lossy(label));
+    /// }
+    /// ```
+    #[inline]
+    pub fn labels(&self) -> LabelIter<'a> {
+        LabelIter::new(self.packet, self.start)
+    }
+
+    /// Returns true if this is the root domain (empty name).
+    #[inline]
+    pub fn is_root(&self) -> bool {
+        self.start < self.packet.len() && self.packet[self.start] == 0
+    }
+
+    /// Returns the total length of this name when encoded (without compression).
+    ///
+    /// This is the sum of: 1 byte per label for length + label bytes + 1 byte for root.
+    pub fn encoded_len(&self) -> usize {
+        let mut len = 1; // Root label
+        for label in self.labels() {
+            if let Ok(l) = label {
+                len += 1 + l.len();
+            }
+        }
+        len
+    }
+
+    /// Returns the packet data this name references.
+    #[inline]
+    pub fn packet(&self) -> &'a [u8] {
+        self.packet
+    }
+
+    /// Returns the start offset of this name in the packet.
+    #[inline]
+    pub fn start(&self) -> usize {
+        self.start
+    }
+
+    /// Returns the end offset (where parsing should continue after this name).
+    #[inline]
+    pub fn end(&self) -> usize {
+        self.end
+    }
+}
+
+impl<'a> core::fmt::Display for Name<'a> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let mut has_labels = false;
+        for label in self.labels() {
+            if let Ok(l) = label {
+                write!(f, "{}.", String::from_utf8_lossy(l))?;
+                has_labels = true;
+            }
+        }
+        if !has_labels {
+            write!(f, ".")?;
+        }
+        Ok(())
+    }
+}
+
+impl<'a> Name<'a> {
+    /// Converts this borrowed name to an owned [`NameOwned`].
+    ///
+    /// This allocates memory to store all the labels.
+    pub fn into_owned(self) -> NameOwned {
+        let labels = self
+            .labels()
+            .filter_map(|r| r.ok())
+            .map(|l| l.to_vec())
+            .collect();
+        NameOwned { labels }
+    }
+}
+
+impl<'a> From<Name<'a>> for NameOwned {
+    fn from(name: Name<'a>) -> Self {
+        name.into_owned()
+    }
+}
+
+/// Iterator over the labels of a DNS domain name.
+///
+/// This iterator follows compression pointers and yields each label as a byte slice.
+/// Errors are returned for malformed names (though this is unlikely if the name
+/// was successfully parsed).
+#[derive(Debug, Clone)]
+pub struct LabelIter<'a> {
+    packet: &'a [u8],
+    pos: usize,
+    visited: [u16; MAX_POINTER_CHAIN],
+    visited_count: usize,
+    done: bool,
+}
+
+impl<'a> LabelIter<'a> {
+    fn new(packet: &'a [u8], start: usize) -> Self {
+        Self {
+            packet,
+            pos: start,
+            visited: [0u16; MAX_POINTER_CHAIN],
+            visited_count: 0,
+            done: false,
+        }
+    }
+}
+
+impl<'a> Iterator for LabelIter<'a> {
+    type Item = Result<&'a [u8], ParseError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.done {
+            return None;
+        }
+
+        loop {
+            // Check for loops
+            let pos_u16 = self.pos as u16;
+            for i in 0..self.visited_count {
+                if self.visited[i] == pos_u16 {
+                    self.done = true;
+                    return Some(Err(ParseError::CompressionPointerLoop));
+                }
+            }
+
+            if self.visited_count >= MAX_POINTER_CHAIN {
+                self.done = true;
+                return Some(Err(ParseError::CompressionPointerLoop));
+            }
+            self.visited[self.visited_count] = pos_u16;
+            self.visited_count += 1;
+
+            if self.pos >= self.packet.len() {
+                self.done = true;
+                return Some(Err(ParseError::BufferTooShort));
+            }
+
+            let length = self.packet[self.pos];
+            match length & 0xC0 {
+                0x00 => {
+                    if length == 0 {
+                        // Root label - done
+                        self.done = true;
+                        return None;
+                    }
+
+                    let label_len = length as usize;
+                    let label_start = self.pos + 1;
+                    let label_end = label_start + label_len;
+
+                    if label_end > self.packet.len() {
+                        self.done = true;
+                        return Some(Err(ParseError::BufferTooShort));
+                    }
+
+                    self.pos = label_end;
+                    return Some(Ok(&self.packet[label_start..label_end]));
+                }
+                0xC0 => {
+                    if self.pos + 1 >= self.packet.len() {
+                        self.done = true;
+                        return Some(Err(ParseError::BufferTooShort));
+                    }
+
+                    let ptr_offset =
+                        (((length & 0x3F) as usize) << 8) | (self.packet[self.pos + 1] as usize);
+
+                    if ptr_offset >= self.packet.len() {
+                        self.done = true;
+                        return Some(Err(ParseError::CompressionPointerOutOfBounds));
+                    }
+
+                    self.pos = ptr_offset;
+                    // Continue the loop to follow the pointer
+                }
+                _ => {
+                    self.done = true;
+                    return Some(Err(ParseError::LabelLengthTooLong));
+                }
+            }
+        }
+    }
+}
+
+/// An owned DNS domain name.
+///
+/// Domain names in DNS are represented as a sequence of labels, where each label
+/// is a length-prefixed string. This owned variant stores labels in allocated vectors,
+/// suitable for long-term storage or modification.
+///
+/// # Example
+///
+/// ```ignore
+/// // Parse and convert to owned
+/// let (name, _) = Name::parse(&packet, 0)?;
+/// let owned: NameOwned = name.into_owned();
+///
+/// // Or parse directly to owned
+/// let (owned, _) = NameOwned::parse(&packet, 0)?;
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct NameOwned {
+    /// The labels that make up this domain name.
+    ///
+    /// For "example.com.", this would be ["example", "com"].
+    /// The root label (empty string) is implicit and not stored.
+    labels: Vec<Vec<u8>>,
+}
+
+impl NameOwned {
+    /// Parse a domain name from the packet data starting at the given offset.
+    ///
+    /// Returns the parsed name and the offset immediately after the name in the
+    /// original data (not following compression pointers).
+    ///
+    /// # Arguments
+    ///
+    /// * `data` - The complete DNS packet data (needed for compression pointers)
+    /// * `offset` - The offset within `data` where the name starts
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The buffer is too short
+    /// - A compression pointer creates a loop
+    /// - A compression pointer points out of bounds
+    /// - A compression pointer points forward
+    /// - A label exceeds 63 octets
+    /// - The decompressed name exceeds 255 octets
+    pub fn parse(packet: &[u8], offset: usize) -> Result<(Self, usize), ParseError> {
+        let (name, end) = Name::parse(packet, offset)?;
+        Ok((name.into_owned(), end))
     }
 
     /// Returns the labels that make up this domain name.
@@ -193,7 +476,7 @@ impl Name {
     }
 }
 
-impl core::fmt::Display for Name {
+impl core::fmt::Display for NameOwned {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         if self.is_root() {
             write!(f, ".")?;
@@ -217,8 +500,8 @@ mod tests {
         let (name, next_offset) = Name::parse(&data, 0).unwrap();
 
         assert_eq!(name.to_string(), "com.");
-        assert_eq!(name.labels().len(), 1);
-        assert_eq!(name.labels()[0], b"com");
+        assert_eq!(name.labels().count(), 1);
+        assert_eq!(name.labels().next().unwrap().unwrap(), b"com");
         assert_eq!(next_offset, data.len());
     }
 
@@ -231,9 +514,10 @@ mod tests {
         let (name, next_offset) = Name::parse(&data, 0).unwrap();
 
         assert_eq!(name.to_string(), "example.com.");
-        assert_eq!(name.labels().len(), 2);
-        assert_eq!(name.labels()[0], b"example");
-        assert_eq!(name.labels()[1], b"com");
+        let labels: Vec<_> = name.labels().collect();
+        assert_eq!(labels.len(), 2);
+        assert_eq!(labels[0].as_ref().unwrap(), b"example");
+        assert_eq!(labels[1].as_ref().unwrap(), b"com");
         assert_eq!(next_offset, data.len());
     }
 
@@ -247,7 +531,7 @@ mod tests {
         let (name, next_offset) = Name::parse(&data, 0).unwrap();
 
         assert_eq!(name.to_string(), "www.example.com.");
-        assert_eq!(name.labels().len(), 3);
+        assert_eq!(name.labels().count(), 3);
         assert_eq!(next_offset, data.len());
     }
 
@@ -259,7 +543,7 @@ mod tests {
 
         assert!(name.is_root());
         assert_eq!(name.to_string(), ".");
-        assert_eq!(name.labels().len(), 0);
+        assert_eq!(name.labels().count(), 0);
         assert_eq!(next_offset, data.len());
     }
 
@@ -349,7 +633,7 @@ mod tests {
         data.push(0x00); // null terminator
 
         let (name, _) = Name::parse(&data, 0).unwrap();
-        assert_eq!(name.labels()[0].len(), 63);
+        assert_eq!(name.labels().next().unwrap().unwrap().len(), 63);
     }
 
     #[test]
@@ -519,5 +803,95 @@ mod tests {
 
         // Root = just null byte = 1
         assert_eq!(name.encoded_len(), 1);
+    }
+
+    // =========================================================================
+    // NameOwned tests
+    // =========================================================================
+
+    #[test]
+    fn test_name_owned_parse() {
+        let data = [0x03, b'c', b'o', b'm', 0x00];
+        let (name, next_offset) = NameOwned::parse(&data, 0).unwrap();
+
+        assert_eq!(name.to_string(), "com.");
+        assert_eq!(name.labels().len(), 1);
+        assert_eq!(name.labels()[0], b"com");
+        assert_eq!(next_offset, data.len());
+    }
+
+    #[test]
+    fn test_name_into_owned() {
+        let data = [
+            0x07, b'e', b'x', b'a', b'm', b'p', b'l', b'e', 0x03, b'c', b'o', b'm', 0x00,
+        ];
+        let (borrowed, _) = Name::parse(&data, 0).unwrap();
+        let owned: NameOwned = borrowed.into_owned();
+
+        assert_eq!(owned.to_string(), "example.com.");
+        assert_eq!(owned.labels().len(), 2);
+        assert_eq!(owned.labels()[0], b"example");
+        assert_eq!(owned.labels()[1], b"com");
+    }
+
+    #[test]
+    fn test_name_owned_is_root() {
+        let data = [0x00];
+        let (name, _) = NameOwned::parse(&data, 0).unwrap();
+
+        assert!(name.is_root());
+        assert_eq!(name.to_string(), ".");
+    }
+
+    #[test]
+    fn test_name_owned_encoded_len() {
+        let data = [
+            0x07, b'e', b'x', b'a', b'm', b'p', b'l', b'e', 0x03, b'c', b'o', b'm', 0x00,
+        ];
+        let (name, _) = NameOwned::parse(&data, 0).unwrap();
+
+        // "example.com." = 1+7 + 1+3 + 1 = 13
+        assert_eq!(name.encoded_len(), 13);
+    }
+
+    // =========================================================================
+    // Compression pointer following tests
+    // =========================================================================
+
+    #[test]
+    fn test_compression_pointer_valid() {
+        // "example.com." at offset 0, then a pointer to it
+        #[rustfmt::skip]
+        let data = [
+            // "example.com." at offset 0
+            0x07, b'e', b'x', b'a', b'm', b'p', b'l', b'e',
+            0x03, b'c', b'o', b'm',
+            0x00,
+            // Pointer at offset 13
+            0xC0, 0x00, // pointer to offset 0
+        ];
+
+        let (name, end_offset) = Name::parse(&data, 13).unwrap();
+        assert_eq!(name.to_string(), "example.com.");
+        assert_eq!(end_offset, 15); // 13 + 2 bytes for pointer
+    }
+
+    #[test]
+    fn test_compression_pointer_partial() {
+        // "www" + pointer to "example.com."
+        #[rustfmt::skip]
+        let data = [
+            // "example.com." at offset 0
+            0x07, b'e', b'x', b'a', b'm', b'p', b'l', b'e',
+            0x03, b'c', b'o', b'm',
+            0x00,
+            // "www" + pointer at offset 13
+            0x03, b'w', b'w', b'w',
+            0xC0, 0x00, // pointer to offset 0
+        ];
+
+        let (name, end_offset) = Name::parse(&data, 13).unwrap();
+        assert_eq!(name.to_string(), "www.example.com.");
+        assert_eq!(end_offset, 19); // 13 + 4 (www) + 2 (pointer)
     }
 }

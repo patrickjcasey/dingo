@@ -1,22 +1,23 @@
 # Dingo
 
-A high-performance DNS toolkit for Rust, focused on speed and ease of use.
+An high-performance DNS toolkit for Rust, focused on speed and ease of use.
 
 ## Workspace Structure
 
 This is a Cargo workspace containing the following crates:
 
-| Crate | Description |
-|-------|-------------|
-| [`dingo-proto`](crates/dingo-proto) | DNS packet parser (`no_std` compatible) |
+| Crate                               | Description                           |
+| ----------------------------------- | ------------------------------------- |
+| [`dingo-proto`](crates/dingo-proto) | `no_std`-compatible DNS packet parser |
 
 ## Features
 
+- Zero unsafe code
 - Fast, zero-copy parsing where possible
-- `no_std` compatible (with `alloc`)
+- `no_std` compatible (requires `alloc`)
 - Robust handling of malformed packets
-- Protection against known DNS parsing vulnerabilities
 - Comprehensive test suite with real-world packet captures
+- Fuzz-tested to check for possible crashes
 
 ## Usage
 
@@ -51,18 +52,12 @@ fn main() {
 }
 ```
 
-## Building
-
-```bash
-cargo build
-```
-
-## Testing
+## Running Tests
 
 ### Unit Tests
 
 ```bash
-cargo test
+cargo test --workspace --all-features
 ```
 
 ### Test Data Setup
@@ -104,13 +99,13 @@ cargo install cargo-fuzz
 
 ```bash
 # Fuzz the main message parser
-cargo +nightly fuzz run parse_message
+cargo +nightly fuzz run --release --debug-assertions parse_message
 
-# Fuzz domain name parsing (compression pointer handling)
-cargo +nightly fuzz run parse_name
+# Fuzz domain name parsing
+cargo +nightly fuzz run --release --debug-assertions parse_name
 
 # Fuzz with multiple parallel jobs
-cargo +nightly fuzz run parse_message --jobs 4
+cargo +nightly fuzz run --release --debug-assertions parse_message --jobs 4
 ```
 
 ### Seeding the Corpus
@@ -128,24 +123,35 @@ cp testdata/dns-fuzzing/packet/*.pkt fuzz/corpus/parse_message/
 
 ### Fuzz Targets
 
-| Target | Description |
-|--------|-------------|
-| `parse_message` | Complete DNS message parsing |
-| `parse_header` | DNS header parsing only |
-| `parse_question` | Question section parsing |
-| `parse_rr` | Resource record parsing |
-| `parse_name` | Domain name with compression pointer handling |
+| Target           | Description                                   |
+| ---------------- | --------------------------------------------- |
+| `parse_message`  | Complete DNS message parsing                  |
+| `parse_header`   | DNS header parsing only                       |
+| `parse_question` | Question section parsing                      |
+| `parse_rr`       | Resource record parsing                       |
+| `parse_name`     | Domain name with compression pointer handling |
 
 ## Updating Test Data
 
 This project uses git submodules for external test data sources.
 
+## Security
+
+This parser is designed to safely handle malformed input. The test suite includes
+checks for known DNS parsing vulnerabilities:
+
+- **Compression pointer loops** (CVE-2018-20994, CVE-2017-14339)
+- **Compression pointer out-of-bounds** (NAME:WRECK)
+- **Label/name length overflow** (RFC 9267)
+- **RDLENGTH validation** (RFC 9267)
+- **Record count validation** (RFC 9267)
+
 ### Submodules
 
-| Directory | Source | Description |
-|-----------|--------|-------------|
-| `testdata/dns-fuzzing` | [CZ-NIC/dns-fuzzing](https://github.com/CZ-NIC/dns-fuzzing) | AFL fuzzing seeds |
-| `testdata/wireshark` | [Wireshark](https://gitlab.com/wireshark/wireshark) | Test captures (sparse checkout) |
+| Directory              | Source                                                      | Description                     |
+| ---------------------- | ----------------------------------------------------------- | ------------------------------- |
+| `testdata/dns-fuzzing` | [CZ-NIC/dns-fuzzing](https://github.com/CZ-NIC/dns-fuzzing) | AFL fuzzing seeds               |
+| `testdata/wireshark`   | [Wireshark](https://gitlab.com/wireshark/wireshark)         | Test captures (sparse checkout) |
 
 ### Update CZ-NIC Fuzzing Corpus
 
@@ -179,26 +185,7 @@ This downloads from the [Wireshark Wiki SampleCaptures](https://wiki.wireshark.o
 - `zlip-1.pcap` - Self-referential pointer decompression flaw
 - `zlip-2.pcap` - Cross-referencing pointer decompression flaw
 - `zlip-3.pcap` - Domain length explosion via decompression
-
-## Security
-
-This parser is designed to safely handle malformed input. The test suite includes
-checks for known DNS parsing vulnerabilities:
-
-- **Compression pointer loops** (CVE-2018-20994, CVE-2017-14339)
-- **Compression pointer out-of-bounds** (NAME:WRECK)
-- **Label/name length overflow** (RFC 9267)
-- **RDLENGTH validation** (RFC 9267)
-- **Record count validation** (RFC 9267)
-
-See [RFC 9267](https://www.rfc-editor.org/rfc/rfc9267.html) for details on common
-DNS implementation anti-patterns.
-
-## License
-
-Licensed under either of:
-
-- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
-- MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
-
-at your option.
+  
+## Relevant RFC
+- [RFC 1035](https://datatracker.ietf.org/doc/html/rfc1035) - Domain Names - Implementation and Specification
+- [RFC 9267](https://datatracker.ietf.org/doc/html/rfc9267) - Common Implementation Anti-Patterns

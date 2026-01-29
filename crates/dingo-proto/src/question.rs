@@ -2,20 +2,23 @@
 //!
 //! This module handles parsing of the question section of DNS messages as
 //! specified in RFC 1035 Section 4.1.2.
+//!
+//! # Type Variants
+//!
+//! - [`Question`] - Zero-copy borrowed type that references packet data
+//! - [`QuestionOwned`] - Owned type that stores the name in an allocated vector
 
+use crate::name::{Name, NameOwned};
 use crate::ParseError;
-use crate::name::Name;
 
-pub enum Qtype {}
-
-/// A DNS question entry.
+/// A zero-copy DNS question entry.
 ///
 /// The question section contains the domain name being queried, the query type,
-/// and the query class.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Question {
-    /// The domain name being queried.
-    pub name: Name,
+/// and the query class. This borrowed variant references the original packet data.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Question<'a> {
+    /// The domain name being queried (zero-copy reference to packet).
+    pub name: Name<'a>,
     /// The query type (QTYPE).
     ///
     /// Common values:
@@ -35,15 +38,15 @@ pub struct Question {
     pub qclass: u16,
 }
 
-impl Question {
+impl<'a> Question<'a> {
     /// Parse a question from the packet data starting at the given offset.
     ///
     /// Returns the parsed question and the offset immediately after the question.
     ///
     /// # Arguments
     ///
-    /// * `data` - The complete DNS packet data (needed for name decompression)
-    /// * `offset` - The offset within `data` where the question starts
+    /// * `packet` - The complete DNS packet data (needed for name decompression)
+    /// * `offset` - The offset within `packet` where the question starts
     ///
     /// # Errors
     ///
@@ -66,7 +69,7 @@ impl Question {
     /// assert_eq!(question.qtype, 1);
     /// assert_eq!(question.qclass, 1);
     /// ```
-    pub fn parse(packet: &[u8], offset: usize) -> Result<(Self, usize), ParseError> {
+    pub fn parse(packet: &'a [u8], offset: usize) -> Result<(Self, usize), ParseError> {
         // 1. Parse the domain name using Name::parse
         let (name, pos) = Name::parse(packet, offset)?;
 
@@ -89,6 +92,84 @@ impl Question {
             qclass,
         };
         Ok((question, pos + 4))
+    }
+
+    /// Returns true if this is a query for any record type (QTYPE=255).
+    #[inline]
+    pub fn is_any_type(&self) -> bool {
+        self.qtype == 255
+    }
+
+    /// Returns true if this is a query for any class (QCLASS=255).
+    #[inline]
+    pub fn is_any_class(&self) -> bool {
+        self.qclass == 255
+    }
+
+    /// Converts this borrowed question to an owned [`QuestionOwned`].
+    ///
+    /// This allocates memory to store the domain name.
+    pub fn into_owned(self) -> QuestionOwned {
+        QuestionOwned {
+            name: self.name.into_owned(),
+            qtype: self.qtype,
+            qclass: self.qclass,
+        }
+    }
+}
+
+impl<'a> From<Question<'a>> for QuestionOwned {
+    fn from(q: Question<'a>) -> Self {
+        q.into_owned()
+    }
+}
+
+/// An owned DNS question entry.
+///
+/// The question section contains the domain name being queried, the query type,
+/// and the query class. This owned variant stores the name in allocated memory.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QuestionOwned {
+    /// The domain name being queried.
+    pub name: NameOwned,
+    /// The query type (QTYPE).
+    ///
+    /// Common values:
+    /// - 1 = A (IPv4 address)
+    /// - 2 = NS (name server)
+    /// - 5 = CNAME (canonical name)
+    /// - 15 = MX (mail exchange)
+    /// - 16 = TXT (text)
+    /// - 28 = AAAA (IPv6 address)
+    /// - 255 = ANY (all records)
+    pub qtype: u16,
+    /// The query class (QCLASS).
+    ///
+    /// Common values:
+    /// - 1 = IN (Internet)
+    /// - 255 = ANY (any class)
+    pub qclass: u16,
+}
+
+impl QuestionOwned {
+    /// Parse a question from the packet data starting at the given offset.
+    ///
+    /// Returns the parsed question and the offset immediately after the question.
+    /// This immediately converts to owned, allocating memory for the name.
+    ///
+    /// # Arguments
+    ///
+    /// * `packet` - The complete DNS packet data (needed for name decompression)
+    /// * `offset` - The offset within `packet` where the question starts
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The buffer is too short
+    /// - The domain name is invalid (see [`Name::parse`])
+    pub fn parse(packet: &[u8], offset: usize) -> Result<(Self, usize), ParseError> {
+        let (question, end) = Question::parse(packet, offset)?;
+        Ok((question.into_owned(), end))
     }
 
     /// Returns true if this is a query for any record type (QTYPE=255).
@@ -473,6 +554,47 @@ mod tests {
 
         let (question, end_offset) = Question::parse(&data, 0).unwrap();
         assert_eq!(question.qclass, 3);
+        assert_eq!(end_offset, data.len());
+    }
+
+    // =========================================================================
+    // Owned type tests
+    // =========================================================================
+
+    #[test]
+    fn test_question_into_owned() {
+        #[rustfmt::skip]
+        let data = [
+            0x07, b'e', b'x', b'a', b'm', b'p', b'l', b'e',
+            0x03, b'c', b'o', b'm',
+            0x00,
+            0x00, 0x01, // QTYPE = A
+            0x00, 0x01, // QCLASS = IN
+        ];
+
+        let (question, _) = Question::parse(&data, 0).unwrap();
+        let owned: QuestionOwned = question.into_owned();
+
+        assert_eq!(owned.name.to_string(), "example.com.");
+        assert_eq!(owned.qtype, 1);
+        assert_eq!(owned.qclass, 1);
+    }
+
+    #[test]
+    fn test_question_owned_parse() {
+        #[rustfmt::skip]
+        let data = [
+            0x03, b'c', b'o', b'm',
+            0x00,
+            0x00, 0x01, // QTYPE = A
+            0x00, 0x01, // QCLASS = IN
+        ];
+
+        let (question, end_offset) = QuestionOwned::parse(&data, 0).unwrap();
+
+        assert_eq!(question.name.to_string(), "com.");
+        assert_eq!(question.qtype, 1);
+        assert_eq!(question.qclass, 1);
         assert_eq!(end_offset, data.len());
     }
 }

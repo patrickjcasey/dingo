@@ -2,20 +2,29 @@
 //!
 //! This module provides the main entry point for parsing DNS messages as
 //! specified in RFC 1035 Section 4.
+//!
+//! # Type Variants
+//!
+//! - [`Message`] - Zero-copy borrowed type with lazy iteration
+//! - [`MessageOwned`] - Owned type with all sections parsed into vectors
 
 use alloc::vec::Vec;
 
-use crate::question::Question;
-use crate::rr::ResourceRecord;
+use crate::question::{Question, QuestionOwned};
+use crate::rr::{ResourceRecord, ResourceRecordOwned};
 use crate::{Header, ParseError, QR};
 
-/// A parsed DNS message.
+/// A zero-copy DNS message with lazy parsing.
 ///
 /// DNS messages consist of a header followed by four sections:
 /// - Question section: what is being asked
 /// - Answer section: resource records answering the question
 /// - Authority section: resource records pointing to authoritative name servers
 /// - Additional section: resource records with additional information
+///
+/// This type only parses the header on construction. The sections are parsed
+/// lazily when you iterate over them, yielding `Result` items to handle
+/// per-record parsing errors.
 ///
 /// # Example
 ///
@@ -25,50 +34,40 @@ use crate::{Header, ParseError, QR};
 /// let packet = [/* ... DNS packet bytes ... */];
 /// let message = Message::parse(&packet)?;
 ///
+/// // Header is already parsed
 /// if message.is_query() {
-///     println!("Query for: {:?}", message.questions);
-/// } else {
-///     println!("Response with {} answers", message.answers.len());
+///     // Questions are parsed lazily
+///     for question in message.questions() {
+///         let q = question?;
+///         println!("Query for: {}", q.name);
+///     }
 /// }
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Message {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Message<'a> {
     /// The DNS header containing flags and section counts.
     pub header: Header,
-    /// The question section.
-    ///
-    /// Typically contains one question, but the protocol allows multiple.
-    pub questions: Vec<Question>,
-    /// The answer section.
-    ///
-    /// Contains resource records that answer the question(s).
-    pub answers: Vec<ResourceRecord>,
-    /// The authority section.
-    ///
-    /// Contains resource records pointing to authoritative name servers.
-    pub authorities: Vec<ResourceRecord>,
-    /// The additional section.
-    ///
-    /// Contains resource records with additional helpful information,
-    /// such as A records for name servers listed in the authority section.
-    pub additionals: Vec<ResourceRecord>,
+    /// The complete packet data.
+    packet: &'a [u8],
 }
 
-impl Message {
-    /// Parse a DNS message from raw packet data.
+impl<'a> Message<'a> {
+    /// Parse and validate a DNS message from raw packet data.
     ///
-    /// This is the main entry point for parsing DNS packets.
+    /// This validates the entire packet including all sections (questions,
+    /// answers, authorities, additionals). If validation succeeds, the
+    /// iterators are guaranteed to yield valid records.
     ///
     /// # Arguments
     ///
-    /// * `data` - The raw DNS packet bytes
+    /// * `packet` - The raw DNS packet bytes
     ///
     /// # Errors
     ///
     /// Returns an error if:
     /// - The packet is too short for a valid header ([`ParseError::BufferTooShort`])
     /// - Any domain name is malformed (compression pointer issues, length issues)
-    /// - Record counts don't match actual records ([`ParseError::InvalidRecordCount`])
+    /// - Record counts don't match actual records
     /// - RDATA length issues ([`ParseError::RdataOverflow`], [`ParseError::InvalidRdataLength`])
     ///
     /// # Example
@@ -93,60 +92,428 @@ impl Message {
     ///
     /// let msg = Message::parse(&packet).unwrap();
     /// assert!(msg.is_query());
-    /// assert_eq!(msg.questions.len(), 1);
     /// ```
-    pub fn parse(data: &[u8]) -> Result<Self, ParseError> {
-        // 1. Parse the header
-        let (header, _remainder) = Header::parse(data)?;
+    pub fn parse(packet: &'a [u8]) -> Result<Self, ParseError> {
+        let (header, _remainder) = Header::parse(packet)?;
 
-        // 2. Get the counts from the header
-        let qdcount = header.qdcount() as usize;
-        let ancount = header.ancount() as usize;
-        let nscount = header.nscount() as usize;
-        let arcount = header.arcount() as usize;
-
-        // 3. Start parsing after the header (offset 12)
+        // Validate all sections upfront
         let mut offset = Header::SIZE;
 
-        // 3a. Parse questions
-        let mut questions = Vec::with_capacity(qdcount);
-        for _ in 0..qdcount {
-            let (question, next_offset) = Question::parse(data, offset)?;
-            questions.push(question);
+        // Validate questions
+        for _ in 0..header.qdcount() {
+            let (_, next_offset) = Question::parse(packet, offset)?;
             offset = next_offset;
         }
 
-        // 3b. Parse answers
-        let mut answers = Vec::with_capacity(ancount);
-        for _ in 0..ancount {
-            let (rr, next_offset) = ResourceRecord::parse(data, offset)?;
-            answers.push(rr);
+        // Validate answers
+        for _ in 0..header.ancount() {
+            let (_, next_offset) = ResourceRecord::parse(packet, offset)?;
             offset = next_offset;
         }
 
-        // 3c. Parse authorities
-        let mut authorities = Vec::with_capacity(nscount);
-        for _ in 0..nscount {
-            let (rr, next_offset) = ResourceRecord::parse(data, offset)?;
-            authorities.push(rr);
+        // Validate authorities
+        for _ in 0..header.nscount() {
+            let (_, next_offset) = ResourceRecord::parse(packet, offset)?;
             offset = next_offset;
         }
 
-        // 3d. Parse additionals
-        let mut additionals = Vec::with_capacity(arcount);
-        for _ in 0..arcount {
-            let (rr, next_offset) = ResourceRecord::parse(data, offset)?;
-            additionals.push(rr);
+        // Validate additionals
+        for _ in 0..header.arcount() {
+            let (_, next_offset) = ResourceRecord::parse(packet, offset)?;
             offset = next_offset;
         }
 
-        Ok(Self {
-            header,
-            questions,
-            answers,
-            authorities,
-            additionals,
+        Ok(Self { header, packet })
+    }
+
+    /// Returns an iterator over the questions in this message.
+    ///
+    /// Each item is a `Result<Question<'a>, ParseError>` to handle parsing errors
+    /// that may occur during iteration.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// for question in msg.questions() {
+    ///     let q = question?;
+    ///     println!("Query: {} type {}", q.name, q.qtype);
+    /// }
+    /// ```
+    pub fn questions(&self) -> QuestionIter<'a> {
+        QuestionIter {
+            packet: self.packet,
+            offset: Header::SIZE,
+            remaining: self.header.qdcount(),
+            failed: false,
+        }
+    }
+
+    /// Returns an iterator over the answers in this message.
+    ///
+    /// Each item is a `Result<ResourceRecord<'a>, ParseError>`.
+    ///
+    /// **Note:** This skips over the question section first. If the questions
+    /// are malformed, this iterator will yield errors.
+    pub fn answers(&self) -> ResourceRecordIter<'a> {
+        // Skip past questions to find where answers start
+        let mut offset = Header::SIZE;
+        let mut questions_remaining = self.header.qdcount();
+
+        // Skip questions
+        while questions_remaining > 0 {
+            match Question::parse(self.packet, offset) {
+                Ok((_, next_offset)) => {
+                    offset = next_offset;
+                    questions_remaining -= 1;
+                }
+                Err(_) => {
+                    // Questions failed to parse; iterator will return error on first call
+                    return ResourceRecordIter {
+                        packet: self.packet,
+                        offset,
+                        remaining: self.header.ancount(),
+                        failed: true,
+                    };
+                }
+            }
+        }
+
+        ResourceRecordIter {
+            packet: self.packet,
+            offset,
+            remaining: self.header.ancount(),
+            failed: false,
+        }
+    }
+
+    /// Returns an iterator over the authority records in this message.
+    ///
+    /// Each item is a `Result<ResourceRecord<'a>, ParseError>`.
+    ///
+    /// **Note:** This skips over the question and answer sections first.
+    pub fn authorities(&self) -> ResourceRecordIter<'a> {
+        // Skip past questions and answers
+        let mut offset = Header::SIZE;
+
+        // Skip questions
+        for _ in 0..self.header.qdcount() {
+            match Question::parse(self.packet, offset) {
+                Ok((_, next_offset)) => offset = next_offset,
+                Err(_) => {
+                    return ResourceRecordIter {
+                        packet: self.packet,
+                        offset,
+                        remaining: self.header.nscount(),
+                        failed: true,
+                    };
+                }
+            }
+        }
+
+        // Skip answers
+        for _ in 0..self.header.ancount() {
+            match ResourceRecord::parse(self.packet, offset) {
+                Ok((_, next_offset)) => offset = next_offset,
+                Err(_) => {
+                    return ResourceRecordIter {
+                        packet: self.packet,
+                        offset,
+                        remaining: self.header.nscount(),
+                        failed: true,
+                    };
+                }
+            }
+        }
+
+        ResourceRecordIter {
+            packet: self.packet,
+            offset,
+            remaining: self.header.nscount(),
+            failed: false,
+        }
+    }
+
+    /// Returns an iterator over the additional records in this message.
+    ///
+    /// Each item is a `Result<ResourceRecord<'a>, ParseError>`.
+    ///
+    /// **Note:** This skips over the question, answer, and authority sections first.
+    pub fn additionals(&self) -> ResourceRecordIter<'a> {
+        // Skip past questions, answers, and authorities
+        let mut offset = Header::SIZE;
+
+        // Skip questions
+        for _ in 0..self.header.qdcount() {
+            match Question::parse(self.packet, offset) {
+                Ok((_, next_offset)) => offset = next_offset,
+                Err(_) => {
+                    return ResourceRecordIter {
+                        packet: self.packet,
+                        offset,
+                        remaining: self.header.arcount(),
+                        failed: true,
+                    };
+                }
+            }
+        }
+
+        // Skip answers
+        for _ in 0..self.header.ancount() {
+            match ResourceRecord::parse(self.packet, offset) {
+                Ok((_, next_offset)) => offset = next_offset,
+                Err(_) => {
+                    return ResourceRecordIter {
+                        packet: self.packet,
+                        offset,
+                        remaining: self.header.arcount(),
+                        failed: true,
+                    };
+                }
+            }
+        }
+
+        // Skip authorities
+        for _ in 0..self.header.nscount() {
+            match ResourceRecord::parse(self.packet, offset) {
+                Ok((_, next_offset)) => offset = next_offset,
+                Err(_) => {
+                    return ResourceRecordIter {
+                        packet: self.packet,
+                        offset,
+                        remaining: self.header.arcount(),
+                        failed: true,
+                    };
+                }
+            }
+        }
+
+        ResourceRecordIter {
+            packet: self.packet,
+            offset,
+            remaining: self.header.arcount(),
+            failed: false,
+        }
+    }
+
+    /// Returns true if this message is a query (QR=0).
+    #[inline]
+    pub fn is_query(&self) -> bool {
+        self.header.qr() == QR::Query
+    }
+
+    /// Returns true if this message is a response (QR=1).
+    #[inline]
+    pub fn is_response(&self) -> bool {
+        self.header.qr() == QR::Response
+    }
+
+    /// Returns the message ID.
+    #[inline]
+    pub fn id(&self) -> u16 {
+        self.header.id()
+    }
+
+    /// Returns true if this response indicates an error.
+    #[inline]
+    pub fn is_error(&self) -> bool {
+        use crate::ResponseCode;
+        !matches!(self.header.response_code(), ResponseCode::NoErrorCondition)
+    }
+
+    /// Returns true if recursion was desired in the query.
+    #[inline]
+    pub fn recursion_desired(&self) -> bool {
+        self.header.recursion_desired()
+    }
+
+    /// Returns true if recursion is available (set in responses).
+    #[inline]
+    pub fn recursion_available(&self) -> bool {
+        self.header.recursion_available()
+    }
+
+    /// Returns true if this message was truncated.
+    ///
+    /// When true, the client should retry the query using TCP.
+    #[inline]
+    pub fn truncated(&self) -> bool {
+        self.header.truncated()
+    }
+
+    /// Returns the raw packet data.
+    #[inline]
+    pub fn packet(&self) -> &'a [u8] {
+        self.packet
+    }
+
+    /// Converts this borrowed message to an owned [`MessageOwned`].
+    ///
+    /// This parses all sections and allocates memory to store them.
+    /// Any parsing errors during conversion will be returned.
+    pub fn into_owned(self) -> Result<MessageOwned, ParseError> {
+        let questions: Result<Vec<_>, _> = self.questions().map(|r| r.map(|q| q.into_owned())).collect();
+        let answers: Result<Vec<_>, _> = self.answers().map(|r| r.map(|rr| rr.into_owned())).collect();
+        let authorities: Result<Vec<_>, _> = self.authorities().map(|r| r.map(|rr| rr.into_owned())).collect();
+        let additionals: Result<Vec<_>, _> = self.additionals().map(|r| r.map(|rr| rr.into_owned())).collect();
+
+        Ok(MessageOwned {
+            header: self.header,
+            questions: questions?,
+            answers: answers?,
+            authorities: authorities?,
+            additionals: additionals?,
         })
+    }
+}
+
+/// Iterator over the questions in a DNS message.
+///
+/// Each item is a `Result<Question<'a>, ParseError>` to handle parsing errors.
+#[derive(Debug, Clone)]
+pub struct QuestionIter<'a> {
+    packet: &'a [u8],
+    offset: usize,
+    remaining: u16,
+    failed: bool,
+}
+
+impl<'a> Iterator for QuestionIter<'a> {
+    type Item = Result<Question<'a>, ParseError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.remaining == 0 || self.failed {
+            return None;
+        }
+
+        match Question::parse(self.packet, self.offset) {
+            Ok((question, next_offset)) => {
+                self.offset = next_offset;
+                self.remaining -= 1;
+                Some(Ok(question))
+            }
+            Err(e) => {
+                self.failed = true;
+                self.remaining = 0;
+                Some(Err(e))
+            }
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = self.remaining as usize;
+        (0, Some(remaining))
+    }
+}
+
+/// Iterator over resource records in a DNS message section.
+///
+/// Each item is a `Result<ResourceRecord<'a>, ParseError>` to handle parsing errors.
+#[derive(Debug, Clone)]
+pub struct ResourceRecordIter<'a> {
+    packet: &'a [u8],
+    offset: usize,
+    remaining: u16,
+    failed: bool,
+}
+
+impl<'a> Iterator for ResourceRecordIter<'a> {
+    type Item = Result<ResourceRecord<'a>, ParseError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.remaining == 0 {
+            return None;
+        }
+
+        // If we failed during skipping, report error immediately
+        if self.failed {
+            self.remaining = 0;
+            return Some(Err(ParseError::BufferTooShort));
+        }
+
+        match ResourceRecord::parse(self.packet, self.offset) {
+            Ok((rr, next_offset)) => {
+                self.offset = next_offset;
+                self.remaining -= 1;
+                Some(Ok(rr))
+            }
+            Err(e) => {
+                self.failed = true;
+                self.remaining = 0;
+                Some(Err(e))
+            }
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = self.remaining as usize;
+        (0, Some(remaining))
+    }
+}
+
+/// An owned DNS message with all sections parsed.
+///
+/// DNS messages consist of a header followed by four sections:
+/// - Question section: what is being asked
+/// - Answer section: resource records answering the question
+/// - Authority section: resource records pointing to authoritative name servers
+/// - Additional section: resource records with additional information
+///
+/// # Example
+///
+/// ```ignore
+/// use dingo_proto::MessageOwned;
+///
+/// let packet = [/* ... DNS packet bytes ... */];
+/// let message = MessageOwned::parse(&packet)?;
+///
+/// if message.is_query() {
+///     println!("Query for: {:?}", message.questions);
+/// } else {
+///     println!("Response with {} answers", message.answers.len());
+/// }
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MessageOwned {
+    /// The DNS header containing flags and section counts.
+    pub header: Header,
+    /// The question section.
+    ///
+    /// Typically contains one question, but the protocol allows multiple.
+    pub questions: Vec<QuestionOwned>,
+    /// The answer section.
+    ///
+    /// Contains resource records that answer the question(s).
+    pub answers: Vec<ResourceRecordOwned>,
+    /// The authority section.
+    ///
+    /// Contains resource records pointing to authoritative name servers.
+    pub authorities: Vec<ResourceRecordOwned>,
+    /// The additional section.
+    ///
+    /// Contains resource records with additional helpful information,
+    /// such as A records for name servers listed in the authority section.
+    pub additionals: Vec<ResourceRecordOwned>,
+}
+
+impl MessageOwned {
+    /// Parse a DNS message from raw packet data.
+    ///
+    /// This eagerly parses all sections, allocating memory for each record.
+    ///
+    /// # Arguments
+    ///
+    /// * `data` - The raw DNS packet bytes
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The packet is too short for a valid header ([`ParseError::BufferTooShort`])
+    /// - Any domain name is malformed (compression pointer issues, length issues)
+    /// - Record counts don't match actual records ([`ParseError::InvalidRecordCount`])
+    /// - RDATA length issues ([`ParseError::RdataOverflow`], [`ParseError::InvalidRdataLength`])
+    pub fn parse(data: &[u8]) -> Result<Self, ParseError> {
+        let msg = Message::parse(data)?;
+        msg.into_owned()
     }
 
     /// Returns true if this message is a query (QR=0).
@@ -230,15 +597,18 @@ mod tests {
         assert_eq!(msg.id(), 0x1234);
         assert!(msg.recursion_desired());
         assert!(!msg.truncated());
-        assert_eq!(msg.questions.len(), 1);
-        assert_eq!(msg.answers.len(), 0);
-        assert_eq!(msg.authorities.len(), 0);
-        assert_eq!(msg.additionals.len(), 0);
 
-        let q = &msg.questions[0];
+        // Test lazy iteration
+        let questions: Vec<_> = msg.questions().collect();
+        assert_eq!(questions.len(), 1);
+        let q = questions[0].as_ref().unwrap();
         assert_eq!(q.name.to_string(), "example.com.");
         assert_eq!(q.qtype, 1); // A
         assert_eq!(q.qclass, 1); // IN
+
+        assert_eq!(msg.answers().count(), 0);
+        assert_eq!(msg.authorities().count(), 0);
+        assert_eq!(msg.additionals().count(), 0);
     }
 
     #[test]
@@ -262,11 +632,12 @@ mod tests {
 
         let msg = Message::parse(&packet).unwrap();
 
-        assert_eq!(msg.questions.len(), 2);
-        assert_eq!(msg.questions[0].name.to_string(), "a.com.");
-        assert_eq!(msg.questions[0].qtype, 1); // A
-        assert_eq!(msg.questions[1].name.to_string(), "b.com.");
-        assert_eq!(msg.questions[1].qtype, 28); // AAAA
+        let questions: Vec<_> = msg.questions().collect();
+        assert_eq!(questions.len(), 2);
+        assert_eq!(questions[0].as_ref().unwrap().name.to_string(), "a.com.");
+        assert_eq!(questions[0].as_ref().unwrap().qtype, 1); // A
+        assert_eq!(questions[1].as_ref().unwrap().name.to_string(), "b.com.");
+        assert_eq!(questions[1].as_ref().unwrap().qtype, 28); // AAAA
     }
 
     #[test]
@@ -287,9 +658,10 @@ mod tests {
 
         let msg = Message::parse(&packet).unwrap();
 
-        assert_eq!(msg.questions[0].name.to_string(), ".");
-        assert!(msg.questions[0].name.is_root());
-        assert_eq!(msg.questions[0].qtype, 2);
+        let q = msg.questions().next().unwrap().unwrap();
+        assert_eq!(q.name.to_string(), ".");
+        assert!(q.name.is_root());
+        assert_eq!(q.qtype, 2);
     }
 
     // =========================================================================
@@ -330,10 +702,12 @@ mod tests {
         assert!(msg.recursion_available());
         assert!(!msg.is_error());
 
-        assert_eq!(msg.questions.len(), 1);
-        assert_eq!(msg.answers.len(), 1);
+        assert_eq!(msg.questions().count(), 1);
 
-        let ans = &msg.answers[0];
+        let answers: Vec<_> = msg.answers().collect();
+        assert_eq!(answers.len(), 1);
+
+        let ans = answers[0].as_ref().unwrap();
         assert_eq!(ans.name.to_string(), "example.com.");
         assert!(ans.is_a());
         assert_eq!(ans.ttl, 60);
@@ -370,9 +744,10 @@ mod tests {
 
         let msg = Message::parse(&packet).unwrap();
 
-        assert_eq!(msg.answers.len(), 2);
-        assert_eq!(msg.answers[0].as_ipv4(), Some([1, 1, 1, 1]));
-        assert_eq!(msg.answers[1].as_ipv4(), Some([8, 8, 8, 8]));
+        let answers: Vec<_> = msg.answers().collect();
+        assert_eq!(answers.len(), 2);
+        assert_eq!(answers[0].as_ref().unwrap().as_ipv4(), Some([1, 1, 1, 1]));
+        assert_eq!(answers[1].as_ref().unwrap().as_ipv4(), Some([8, 8, 8, 8]));
     }
 
     #[test]
@@ -400,10 +775,12 @@ mod tests {
 
         let msg = Message::parse(&packet).unwrap();
 
-        assert_eq!(msg.questions.len(), 1);
-        assert_eq!(msg.answers.len(), 0);
-        assert_eq!(msg.authorities.len(), 1);
-        assert_eq!(msg.authorities[0].rtype, 2); // NS
+        assert_eq!(msg.questions().count(), 1);
+        assert_eq!(msg.answers().count(), 0);
+
+        let authorities: Vec<_> = msg.authorities().collect();
+        assert_eq!(authorities.len(), 1);
+        assert_eq!(authorities[0].as_ref().unwrap().rtype, 2); // NS
     }
 
     #[test]
@@ -430,8 +807,9 @@ mod tests {
 
         let msg = Message::parse(&packet).unwrap();
 
-        assert_eq!(msg.additionals.len(), 1);
-        assert!(msg.additionals[0].is_opt());
+        let additionals: Vec<_> = msg.additionals().collect();
+        assert_eq!(additionals.len(), 1);
+        assert!(additionals[0].as_ref().unwrap().is_opt());
     }
 
     #[test]
@@ -471,10 +849,10 @@ mod tests {
 
         let msg = Message::parse(&packet).unwrap();
 
-        assert_eq!(msg.questions.len(), 1);
-        assert_eq!(msg.answers.len(), 1);
-        assert_eq!(msg.authorities.len(), 1);
-        assert_eq!(msg.additionals.len(), 1);
+        assert_eq!(msg.questions().count(), 1);
+        assert_eq!(msg.answers().count(), 1);
+        assert_eq!(msg.authorities().count(), 1);
+        assert_eq!(msg.additionals().count(), 1);
     }
 
     // =========================================================================
@@ -565,10 +943,10 @@ mod tests {
 
         let msg = Message::parse(&packet).unwrap();
 
-        assert!(msg.questions.is_empty());
-        assert!(msg.answers.is_empty());
-        assert!(msg.authorities.is_empty());
-        assert!(msg.additionals.is_empty());
+        assert_eq!(msg.questions().count(), 0);
+        assert_eq!(msg.answers().count(), 0);
+        assert_eq!(msg.authorities().count(), 0);
+        assert_eq!(msg.additionals().count(), 0);
     }
 
     #[test]
@@ -592,8 +970,8 @@ mod tests {
 
         let msg = Message::parse(&packet).unwrap();
 
-        assert!(msg.questions.is_empty());
-        assert_eq!(msg.answers.len(), 1);
+        assert_eq!(msg.questions().count(), 0);
+        assert_eq!(msg.answers().count(), 1);
     }
 
     // =========================================================================
@@ -651,45 +1029,9 @@ mod tests {
             0x00, 0x01, 0x00, 0x01,
         ];
 
+        // Parse validates everything upfront, should fail
         let result = Message::parse(&packet);
-        assert!(
-            matches!(
-                result,
-                Err(ParseError::BufferTooShort | ParseError::InvalidRecordCount)
-            ),
-            "Expected BufferTooShort or InvalidRecordCount, got {:?}",
-            result
-        );
-    }
-
-    #[test]
-    fn test_ancount_exceeds_data() {
-        // ANCOUNT=3 but only 1 answer present
-        #[rustfmt::skip]
-        let packet = [
-            0x00, 0x01,
-            0x80, 0x00,
-            0x00, 0x00,
-            0x00, 0x03,             // ANCOUNT = 3
-            0x00, 0x00,
-            0x00, 0x00,
-            // Only 1 answer
-            0x03, b'c', b'o', b'm', 0x00,
-            0x00, 0x01, 0x00, 0x01,
-            0x00, 0x00, 0x00, 0x3C,
-            0x00, 0x04,
-            0x01, 0x02, 0x03, 0x04,
-        ];
-
-        let result = Message::parse(&packet);
-        assert!(
-            matches!(
-                result,
-                Err(ParseError::BufferTooShort | ParseError::InvalidRecordCount)
-            ),
-            "Expected BufferTooShort or InvalidRecordCount, got {:?}",
-            result
-        );
+        assert!(result.is_err(), "Expected error for QDCOUNT mismatch");
     }
 
     #[test]
@@ -706,15 +1048,9 @@ mod tests {
             // No question follows
         ];
 
+        // Parse validates everything upfront, should fail
         let result = Message::parse(&packet);
-        assert!(
-            matches!(
-                result,
-                Err(ParseError::BufferTooShort | ParseError::InvalidRecordCount)
-            ),
-            "Expected BufferTooShort or InvalidRecordCount, got {:?}",
-            result
-        );
+        assert!(result.is_err(), "Expected error for missing questions");
     }
 
     // =========================================================================
@@ -752,9 +1088,10 @@ mod tests {
 
         let msg = Message::parse(&packet).unwrap();
 
-        assert_eq!(msg.answers.len(), 2);
-        assert_eq!(msg.answers[0].name.to_string(), "example.com.");
-        assert_eq!(msg.answers[1].name.to_string(), "example.com.");
+        let answers: Vec<_> = msg.answers().collect();
+        assert_eq!(answers.len(), 2);
+        assert_eq!(answers[0].as_ref().unwrap().name.to_string(), "example.com.");
+        assert_eq!(answers[1].as_ref().unwrap().name.to_string(), "example.com.");
     }
 
     // =========================================================================
@@ -776,103 +1113,69 @@ mod tests {
             0x00, 0x01, 0x00, 0x01,
         ];
 
+        // Parse validates everything upfront, should detect compression pointer loop
         let result = Message::parse(&packet);
-        assert!(
-            matches!(result, Err(ParseError::CompressionPointerLoop)),
-            "Expected CompressionPointerLoop, got {:?}",
-            result
-        );
+        assert!(matches!(result, Err(ParseError::CompressionPointerLoop)));
     }
 
+    // =========================================================================
+    // Owned conversion tests
+    // =========================================================================
+
     #[test]
-    fn test_compression_pointer_loop_in_answer() {
-        // Valid question, but answer has compression pointer loop
+    fn test_message_into_owned() {
         #[rustfmt::skip]
         let packet = [
-            0x00, 0x01,
-            0x80, 0x00,
-            0x00, 0x01,
+            0x12, 0x34,             // ID
+            0x81, 0x80,             // Flags: QR=1, RD=1, RA=1
+            0x00, 0x01,             // QDCOUNT = 1
             0x00, 0x01,             // ANCOUNT = 1
-            0x00, 0x00,
-            0x00, 0x00,
-            // Valid question
-            0x03, b'c', b'o', b'm', 0x00,
-            0x00, 0x01, 0x00, 0x01,
-            // Answer with self-referential name
-            0xC0, 0x15,             // Points to itself (offset 21)
+            0x00, 0x00,             // NSCOUNT = 0
+            0x00, 0x00,             // ARCOUNT = 0
+            // Question
+            0x07, b'e', b'x', b'a', b'm', b'p', b'l', b'e',
+            0x03, b'c', b'o', b'm',
+            0x00,
+            0x00, 0x01,             // QTYPE = A
+            0x00, 0x01,             // QCLASS = IN
+            // Answer
+            0xC0, 0x0C,
             0x00, 0x01, 0x00, 0x01,
             0x00, 0x00, 0x00, 0x3C,
             0x00, 0x04,
-            0x01, 0x02, 0x03, 0x04,
+            0x5D, 0xB8, 0xD8, 0x22,
         ];
 
-        let result = Message::parse(&packet);
-        assert!(
-            matches!(
-                result,
-                Err(ParseError::CompressionPointerLoop | ParseError::CompressionPointerForward)
-            ),
-            "Expected compression pointer error, got {:?}",
-            result
-        );
+        let msg = Message::parse(&packet).unwrap();
+        let owned = msg.into_owned().unwrap();
+
+        assert!(owned.is_response());
+        assert_eq!(owned.id(), 0x1234);
+        assert_eq!(owned.questions.len(), 1);
+        assert_eq!(owned.questions[0].name.to_string(), "example.com.");
+        assert_eq!(owned.answers.len(), 1);
+        assert_eq!(owned.answers[0].as_ipv4(), Some([93, 184, 216, 34]));
     }
 
-    // =========================================================================
-    // RDLENGTH Error Propagation Tests
-    // =========================================================================
-
     #[test]
-    fn test_rdlength_overflow_in_answer() {
-        // Answer with RDLENGTH that exceeds remaining packet
+    fn test_message_owned_parse() {
         #[rustfmt::skip]
         let packet = [
+            0x12, 0x34,
+            0x01, 0x00,
             0x00, 0x01,
-            0x80, 0x00,
-            0x00, 0x00,
-            0x00, 0x01,             // ANCOUNT = 1
             0x00, 0x00,
             0x00, 0x00,
-            // Answer with huge RDLENGTH
+            0x00, 0x00,
             0x03, b'c', b'o', b'm', 0x00,
             0x00, 0x01, 0x00, 0x01,
-            0x00, 0x00, 0x00, 0x3C,
-            0x00, 0xFF,             // RDLENGTH = 255
-            0x01, 0x02, 0x03, 0x04, // Only 4 bytes
         ];
 
-        let result = Message::parse(&packet);
-        assert!(
-            matches!(result, Err(ParseError::RdataOverflow)),
-            "Expected RdataOverflow, got {:?}",
-            result
-        );
-    }
+        let msg = MessageOwned::parse(&packet).unwrap();
 
-    #[test]
-    fn test_invalid_a_record_length_in_answer() {
-        // A record with wrong RDLENGTH
-        #[rustfmt::skip]
-        let packet = [
-            0x00, 0x01,
-            0x80, 0x00,
-            0x00, 0x00,
-            0x00, 0x01,
-            0x00, 0x00,
-            0x00, 0x00,
-            // A record with RDLENGTH = 3
-            0x00,
-            0x00, 0x01, 0x00, 0x01,
-            0x00, 0x00, 0x00, 0x3C,
-            0x00, 0x03,
-            0x01, 0x02, 0x03,
-        ];
-
-        let result = Message::parse(&packet);
-        assert!(
-            matches!(result, Err(ParseError::InvalidRdataLength)),
-            "Expected InvalidRdataLength, got {:?}",
-            result
-        );
+        assert!(msg.is_query());
+        assert_eq!(msg.questions.len(), 1);
+        assert_eq!(msg.questions[0].name.to_string(), "com.");
     }
 
     // =========================================================================

@@ -8,11 +8,12 @@ edition = "2024"
 authors = ["Patrick Casey <patrick.casey1@outlook.com>"]
 license = "MIT"
 repository = "https://github.com/patrickjcasey/dingo"
+rust-version = "1.88.0"
 
 [workspace.dependencies]
-# Internal crates
 dingo-proto = { path = "crates/dingo-proto" }
+hex = "0.4.3"
+pcap-parser = "0.17.0"
 
-# External dependencies
-hex = "0.4"
-pcap-parser = "0.15"
+[workspace.lints.rust]
+unsafe_code = "forbid"

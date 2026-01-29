@@ -1,4 +1,4 @@
-use core::fmt::{Display, write};
+use core::fmt::Display;
 
 /// Possible errors that may occur when parsing a DNS packet
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

@@ -10,8 +10,9 @@
 # Example:
 #   ./scripts/extract-dns-payloads.sh fuzz/corpus/parse_message testdata/samples/*.pcap
 #
-
 set -euo pipefail
+
+# TODO: usage function
 
 if [[ $# -lt 2 ]]; then
     echo "Usage: $0 <output_dir> <pcap_file>..."
@@ -29,13 +30,8 @@ fi
 OUTPUT_DIR="$1"
 shift
 
-# Check for tshark
 if ! command -v tshark &> /dev/null; then
-    echo "Error: tshark not found. Please install Wireshark/tshark."
-    echo ""
-    echo "  Ubuntu/Debian: sudo apt install tshark"
-    echo "  macOS:         brew install wireshark"
-    echo "  Fedora:        sudo dnf install wireshark-cli"
+    echo "[X] 'tshark' is required but not installed"
     exit 1
 fi
 
@@ -81,5 +77,5 @@ for pcap_file in "$@"; do
 done
 
 echo ""
-echo "==> Total extracted: $TOTAL_EXTRACTED payloads"
-echo "==> Output directory: $OUTPUT_DIR"
+echo "[*] Total extracted: $TOTAL_EXTRACTED payloads"
+echo "[*] Output directory: $OUTPUT_DIR"

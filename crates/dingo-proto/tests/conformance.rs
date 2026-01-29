@@ -244,12 +244,14 @@ fn test_valid_minimal_query() {
 
     let msg = result.unwrap();
     assert!(msg.is_query());
-    assert_eq!(msg.header.id(), 0x1234);
+    assert_eq!(msg.id(), 0x1234);
     assert_eq!(msg.header.qdcount(), 1);
-    assert_eq!(msg.questions.len(), 1);
-    assert_eq!(msg.questions[0].name.to_string(), "example.com.");
-    assert_eq!(msg.questions[0].qtype, 1); // A
-    assert_eq!(msg.questions[0].qclass, 1); // IN
+
+    let questions: Vec<_> = msg.questions().collect::<Result<Vec<_>, _>>().unwrap();
+    assert_eq!(questions.len(), 1);
+    assert_eq!(questions[0].name.to_string(), "example.com.");
+    assert_eq!(questions[0].qtype, 1); // A
+    assert_eq!(questions[0].qclass, 1); // IN
 }
 
 /// Test parsing a valid DNS response with A record
@@ -288,7 +290,8 @@ fn test_valid_response_with_a_record() {
 
     let msg = result.unwrap();
     assert!(msg.is_response());
-    assert_eq!(msg.answers.len(), 1);
+    let answers: Vec<_> = msg.answers().collect::<Result<Vec<_>, _>>().unwrap();
+    assert_eq!(answers.len(), 1);
 }
 
 /// Test parsing a response with multiple record types

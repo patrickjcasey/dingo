@@ -4,8 +4,6 @@
 # These files are sourced from the Wireshark Wiki SampleCaptures page.
 #
 # Usage: ./scripts/download-testdata.sh
-#
-
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -13,47 +11,40 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 SAMPLES_DIR="$PROJECT_ROOT/testdata/samples"
 
 # Wireshark wiki sample captures base URL
-WIKI_BASE="https://wiki.wireshark.org/uploads/__moin_import__/attachments/SampleCaptures"
+WIRESHARK_BASE_URL="https://wiki.wireshark.org/uploads/__moin_import__/attachments/SampleCaptures"
 
 # Files to download from Wireshark wiki
 declare -A WIKI_SAMPLES=(
     ["dns.cap"]="dns.cap"
-    ["dns-remoteshell.pcap"]="dns-remoteshell.pcap"
+    # contain various DNS exploits
     ["zlip-1.pcap"]="zlip-1.pcap"
     ["zlip-2.pcap"]="zlip-2.pcap"
     ["zlip-3.pcap"]="zlip-3.pcap"
 )
 
-echo "==> Creating samples directory..."
-mkdir -p "$SAMPLES_DIR"
+if ! command -v curl &> /dev/null; then
+    echo "[X] 'curl' is required but not installed"
+    exit 1
+fi
 
-echo "==> Downloading Wireshark wiki samples..."
+if [ ! -d "$SAMPLES_DIR" ]; then
+    mkdir -p "$SAMPLES_DIR"
+    echo "[*] Created $SAMPLES_DIR"
+fi
+
 for local_name in "${!WIKI_SAMPLES[@]}"; do
     remote_name="${WIKI_SAMPLES[$local_name]}"
     target_path="$SAMPLES_DIR/$local_name"
-
     if [[ -f "$target_path" ]]; then
-        echo "    [skip] $local_name (already exists)"
+        echo "    [!] $local_name (already exists, skipping)"
     else
-        echo "    [download] $local_name..."
-        if curl -sSfL "$WIKI_BASE/$remote_name" -o "$target_path"; then
-            echo "    [ok] $local_name"
+        if curl -sSfL "$WIRESHARK_BASE_URL/$remote_name" -o "$target_path"; then
+            echo "    [*] Downloaded: $local_name"
         else
-            echo "    [error] Failed to download $local_name"
-            echo "           URL: $WIKI_BASE/$remote_name"
+            echo "    [X] Failed to download $local_name"
+            echo "           URL: $WIRESHARK_BASE_URL/$remote_name"
             echo "           You may need to download this file manually."
         fi
     fi
 done
-
-echo ""
-echo "==> Download complete!"
-echo ""
-echo "Downloaded files are in: $SAMPLES_DIR"
-echo ""
-echo "File descriptions:"
-echo "  dns.cap              - Various DNS lookups"
-echo "  dns-remoteshell.pcap - DNS anomaly (remoteshell on DNS port)"
-echo "  zlip-1.pcap          - Endless self-referential pointer loop"
-echo "  zlip-2.pcap          - Endless cross-referencing decompression"
-echo "  zlip-3.pcap          - Long domain via multiple decompression"
+echo "[*] Download complete, files located in: $SAMPLES_DIR"

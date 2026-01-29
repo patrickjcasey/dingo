@@ -1,12 +1,11 @@
-# Rust
-/target/
+target/
 Cargo.lock
 
 # Fuzzing artifacts
-/fuzz/target/
-/fuzz/corpus/
-/fuzz/artifacts/
+fuzz/target/
+fuzz/corpus/
+fuzz/artifacts/
 
 # Downloaded test data (not in git)
-/testdata/samples/
+testdata/samples/
 

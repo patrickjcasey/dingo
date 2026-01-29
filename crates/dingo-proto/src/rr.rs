@@ -3,20 +3,26 @@
 //! This module handles parsing of resource records (RRs) as specified in
 //! RFC 1035 Section 4.1.3. Resource records appear in the answer, authority,
 //! and additional sections of DNS messages.
+//!
+//! # Type Variants
+//!
+//! - [`ResourceRecord`] - Zero-copy borrowed type that references packet data
+//! - [`ResourceRecordOwned`] - Owned type that stores data in allocated vectors
 
 use alloc::vec::Vec;
 
+use crate::name::{Name, NameOwned};
 use crate::ParseError;
-use crate::name::Name;
 
-/// A DNS resource record.
+/// A zero-copy DNS resource record.
 ///
 /// Resource records contain the actual DNS data such as IP addresses,
-/// name server information, mail exchange records, etc.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ResourceRecord {
+/// name server information, mail exchange records, etc. This borrowed variant
+/// references the original packet data without allocation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ResourceRecord<'a> {
     /// The domain name to which this record pertains.
-    pub name: Name,
+    pub name: Name<'a>,
 
     /// The record type (TYPE).
     ///
@@ -45,7 +51,7 @@ pub struct ResourceRecord {
     /// The length of the RDATA field.
     pub rdlength: u16,
 
-    /// The raw record data.
+    /// The raw record data as a slice into the packet.
     ///
     /// The format depends on the record type:
     /// - A: 4 bytes (IPv4 address)
@@ -54,18 +60,21 @@ pub struct ResourceRecord {
     /// - MX: 2-byte preference + domain name
     /// - TXT: length-prefixed strings
     /// - SOA: complex structure with names and integers
-    pub rdata: Vec<u8>,
+    pub rdata: &'a [u8],
+
+    /// The complete packet (for parsing names in RDATA).
+    packet: &'a [u8],
 }
 
-impl ResourceRecord {
+impl<'a> ResourceRecord<'a> {
     /// Parse a resource record from the packet data starting at the given offset.
     ///
     /// Returns the parsed record and the offset immediately after the record.
     ///
     /// # Arguments
     ///
-    /// * `data` - The complete DNS packet data (needed for name decompression)
-    /// * `offset` - The offset within `data` where the record starts
+    /// * `packet` - The complete DNS packet data (needed for name decompression)
+    /// * `offset` - The offset within `packet` where the record starts
     ///
     /// # Errors
     ///
@@ -91,7 +100,7 @@ impl ResourceRecord {
     /// assert_eq!(rr.rtype, 1);
     /// assert_eq!(rr.rdata, [1, 2, 3, 4]);
     /// ```
-    pub fn parse(packet: &[u8], offset: usize) -> Result<(Self, usize), ParseError> {
+    pub fn parse(packet: &'a [u8], offset: usize) -> Result<(Self, usize), ParseError> {
         // 1. Parse the domain name using Name::parse
         let (name, mut pos) = Name::parse(packet, offset)?;
 
@@ -153,8 +162,8 @@ impl ResourceRecord {
             }
         }
 
-        // 8. Read RDLENGTH bytes as RDATA
-        let rdata = packet[pos..pos + rdlength_usize].to_vec();
+        // 8. Get RDATA slice (zero-copy)
+        let rdata = &packet[pos..pos + rdlength_usize];
         pos += rdlength_usize;
 
         // 9. Return the ResourceRecord and offset after RDATA
@@ -165,8 +174,152 @@ impl ResourceRecord {
             ttl,
             rdlength,
             rdata,
+            packet,
         };
         Ok((rr, pos))
+    }
+
+    /// Returns true if this is an A record (IPv4 address).
+    #[inline]
+    pub fn is_a(&self) -> bool {
+        self.rtype == 1
+    }
+
+    /// Returns true if this is an AAAA record (IPv6 address).
+    #[inline]
+    pub fn is_aaaa(&self) -> bool {
+        self.rtype == 28
+    }
+
+    /// Returns true if this is an OPT record (EDNS).
+    #[inline]
+    pub fn is_opt(&self) -> bool {
+        self.rtype == 41
+    }
+
+    /// For A records, returns the IPv4 address as a 4-byte array.
+    ///
+    /// Returns `None` if this is not an A record or RDATA is malformed.
+    #[inline]
+    pub fn as_ipv4(&self) -> Option<[u8; 4]> {
+        if self.rtype == 1 && self.rdata.len() == 4 {
+            Some([self.rdata[0], self.rdata[1], self.rdata[2], self.rdata[3]])
+        } else {
+            None
+        }
+    }
+
+    /// For AAAA records, returns the IPv6 address as a 16-byte array.
+    ///
+    /// Returns `None` if this is not an AAAA record or RDATA is malformed.
+    #[inline]
+    pub fn as_ipv6(&self) -> Option<[u8; 16]> {
+        if self.rtype == 28 && self.rdata.len() == 16 {
+            self.rdata.try_into().ok()
+        } else {
+            None
+        }
+    }
+
+    /// Returns the complete packet this record references.
+    ///
+    /// This is useful for parsing names within RDATA (e.g., CNAME, MX).
+    #[inline]
+    pub fn packet(&self) -> &'a [u8] {
+        self.packet
+    }
+
+    /// Converts this borrowed record to an owned [`ResourceRecordOwned`].
+    ///
+    /// This allocates memory to store the name and RDATA.
+    pub fn into_owned(self) -> ResourceRecordOwned {
+        ResourceRecordOwned {
+            name: self.name.into_owned(),
+            rtype: self.rtype,
+            rclass: self.rclass,
+            ttl: self.ttl,
+            rdlength: self.rdlength,
+            rdata: self.rdata.to_vec(),
+        }
+    }
+}
+
+impl<'a> From<ResourceRecord<'a>> for ResourceRecordOwned {
+    fn from(rr: ResourceRecord<'a>) -> Self {
+        rr.into_owned()
+    }
+}
+
+/// An owned DNS resource record.
+///
+/// Resource records contain the actual DNS data such as IP addresses,
+/// name server information, mail exchange records, etc. This owned variant
+/// stores the name and RDATA in allocated memory.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResourceRecordOwned {
+    /// The domain name to which this record pertains.
+    pub name: NameOwned,
+
+    /// The record type (TYPE).
+    ///
+    /// Common values:
+    /// - 1 = A (IPv4 address)
+    /// - 2 = NS (name server)
+    /// - 5 = CNAME (canonical name)
+    /// - 6 = SOA (start of authority)
+    /// - 15 = MX (mail exchange)
+    /// - 16 = TXT (text)
+    /// - 28 = AAAA (IPv6 address)
+    /// - 41 = OPT (EDNS)
+    pub rtype: u16,
+
+    /// The record class (CLASS).
+    ///
+    /// Common values:
+    /// - 1 = IN (Internet)
+    pub rclass: u16,
+
+    /// Time to live in seconds.
+    ///
+    /// Specifies how long the record may be cached.
+    pub ttl: u32,
+
+    /// The length of the RDATA field.
+    pub rdlength: u16,
+
+    /// The raw record data.
+    ///
+    /// The format depends on the record type:
+    /// - A: 4 bytes (IPv4 address)
+    /// - AAAA: 16 bytes (IPv6 address)
+    /// - CNAME/NS/PTR: compressed domain name
+    /// - MX: 2-byte preference + domain name
+    /// - TXT: length-prefixed strings
+    /// - SOA: complex structure with names and integers
+    pub rdata: Vec<u8>,
+}
+
+impl ResourceRecordOwned {
+    /// Parse a resource record from the packet data starting at the given offset.
+    ///
+    /// Returns the parsed record and the offset immediately after the record.
+    /// This immediately converts to owned, allocating memory for the name and RDATA.
+    ///
+    /// # Arguments
+    ///
+    /// * `packet` - The complete DNS packet data (needed for name decompression)
+    /// * `offset` - The offset within `packet` where the record starts
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The buffer is too short
+    /// - The domain name is invalid (see [`Name::parse`])
+    /// - RDLENGTH exceeds remaining packet data ([`ParseError::RdataOverflow`])
+    /// - RDLENGTH is invalid for the record type ([`ParseError::InvalidRdataLength`])
+    pub fn parse(packet: &[u8], offset: usize) -> Result<(Self, usize), ParseError> {
+        let (rr, end) = ResourceRecord::parse(packet, offset)?;
+        Ok((rr.into_owned(), end))
     }
 
     /// Returns true if this is an A record (IPv4 address).
@@ -760,6 +913,54 @@ mod tests {
 
         assert_eq!(rr.rdlength, 0);
         assert!(rr.rdata.is_empty());
+        assert_eq!(end_offset, data.len());
+    }
+
+    // =========================================================================
+    // Owned type tests
+    // =========================================================================
+
+    #[test]
+    fn test_resource_record_into_owned() {
+        #[rustfmt::skip]
+        let data = [
+            0x03, b'w', b'w', b'w', 0x00, // name: www.
+            0x00, 0x01,                   // TYPE = A
+            0x00, 0x01,                   // CLASS = IN
+            0x00, 0x00, 0x00, 0x3C,       // TTL = 60
+            0x00, 0x04,                   // RDLENGTH = 4
+            0x01, 0x02, 0x03, 0x04,       // RDATA = 1.2.3.4
+        ];
+
+        let (rr, _) = ResourceRecord::parse(&data, 0).unwrap();
+        let owned: ResourceRecordOwned = rr.into_owned();
+
+        assert_eq!(owned.name.to_string(), "www.");
+        assert_eq!(owned.rtype, 1);
+        assert_eq!(owned.rclass, 1);
+        assert_eq!(owned.ttl, 60);
+        assert_eq!(owned.rdata, [1, 2, 3, 4]);
+        assert!(owned.is_a());
+        assert_eq!(owned.as_ipv4(), Some([1, 2, 3, 4]));
+    }
+
+    #[test]
+    fn test_resource_record_owned_parse() {
+        #[rustfmt::skip]
+        let data = [
+            0x00,                         // root name
+            0x00, 0x01,                   // TYPE = A
+            0x00, 0x01,                   // CLASS = IN
+            0x00, 0x00, 0x00, 0x3C,       // TTL = 60
+            0x00, 0x04,                   // RDLENGTH = 4
+            0x08, 0x08, 0x08, 0x08,       // RDATA = 8.8.8.8
+        ];
+
+        let (rr, end_offset) = ResourceRecordOwned::parse(&data, 0).unwrap();
+
+        assert_eq!(rr.name.to_string(), ".");
+        assert_eq!(rr.rtype, 1);
+        assert_eq!(rr.as_ipv4(), Some([8, 8, 8, 8]));
         assert_eq!(end_offset, data.len());
     }
 }
