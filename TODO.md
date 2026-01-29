@@ -309,18 +309,28 @@ let response = MessageBuilder::response_to(&query)
     .build()?;
 ```
 
+### 17 Setup CI
+[ ] configure `cargo test`
+[ ] configure `cargo miri`
+[ ] configure `cargo fmt --check`
+[ ] configure publishing when git tag applied to `main`
+
+### 18 Setup CI
+[ ] rewrite git history, squash down to 1 commit
+[ ] swap email to `patrickcaseyoss@gmail.com` in git history and Cargo.toml
+
 ---
 
 ## File Overview
 
-| File | Status | Description |
-|------|--------|-------------|
-| `src/lib.rs` | ✅ Done | Public API exports, Header type |
-| `src/error.rs` | ✅ Done | ParseError enum with all variants |
-| `src/name.rs` | ✅ Done | Name<'a>, NameOwned, LabelIter |
-| `src/question.rs` | ✅ Done | Question<'a>, QuestionOwned |
-| `src/rr.rs` | ✅ Done | ResourceRecord<'a>, ResourceRecordOwned |
-| `src/message.rs` | ✅ Done | Message<'a>, MessageOwned, iterators |
+| File              | Status | Description                             |
+| ----------------- | ------ | --------------------------------------- |
+| `src/lib.rs`      | ✅ Done | Public API exports, Header type         |
+| `src/error.rs`    | ✅ Done | ParseError enum with all variants       |
+| `src/name.rs`     | ✅ Done | Name<'a>, NameOwned, LabelIter          |
+| `src/question.rs` | ✅ Done | Question<'a>, QuestionOwned             |
+| `src/rr.rs`       | ✅ Done | ResourceRecord<'a>, ResourceRecordOwned |
+| `src/message.rs`  | ✅ Done | Message<'a>, MessageOwned, iterators    |
 
 ---
 
