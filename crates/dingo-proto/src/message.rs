@@ -351,10 +351,22 @@ impl<'a> Message<'a> {
     /// This parses all sections and allocates memory to store them.
     /// Any parsing errors during conversion will be returned.
     pub fn into_owned(self) -> Result<MessageOwned, ParseError> {
-        let questions: Result<Vec<_>, _> = self.questions().map(|r| r.map(|q| q.into_owned())).collect();
-        let answers: Result<Vec<_>, _> = self.answers().map(|r| r.map(|rr| rr.into_owned())).collect();
-        let authorities: Result<Vec<_>, _> = self.authorities().map(|r| r.map(|rr| rr.into_owned())).collect();
-        let additionals: Result<Vec<_>, _> = self.additionals().map(|r| r.map(|rr| rr.into_owned())).collect();
+        let questions: Result<Vec<_>, _> = self
+            .questions()
+            .map(|r| r.map(|q| q.into_owned()))
+            .collect();
+        let answers: Result<Vec<_>, _> = self
+            .answers()
+            .map(|r| r.map(|rr| rr.into_owned()))
+            .collect();
+        let authorities: Result<Vec<_>, _> = self
+            .authorities()
+            .map(|r| r.map(|rr| rr.into_owned()))
+            .collect();
+        let additionals: Result<Vec<_>, _> = self
+            .additionals()
+            .map(|r| r.map(|rr| rr.into_owned()))
+            .collect();
 
         Ok(MessageOwned {
             header: self.header,
@@ -1090,8 +1102,14 @@ mod tests {
 
         let answers: Vec<_> = msg.answers().collect();
         assert_eq!(answers.len(), 2);
-        assert_eq!(answers[0].as_ref().unwrap().name.to_string(), "example.com.");
-        assert_eq!(answers[1].as_ref().unwrap().name.to_string(), "example.com.");
+        assert_eq!(
+            answers[0].as_ref().unwrap().name.to_string(),
+            "example.com."
+        );
+        assert_eq!(
+            answers[1].as_ref().unwrap().name.to_string(),
+            "example.com."
+        );
     }
 
     // =========================================================================

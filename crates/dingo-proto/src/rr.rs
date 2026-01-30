@@ -11,8 +11,8 @@
 
 use alloc::vec::Vec;
 
-use crate::name::{Name, NameOwned};
 use crate::ParseError;
+use crate::name::{Name, NameOwned};
 
 /// A zero-copy DNS resource record.
 ///
