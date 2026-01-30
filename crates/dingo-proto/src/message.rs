@@ -995,8 +995,7 @@ mod tests {
         let result = Message::parse(&[]);
         assert!(
             matches!(result, Err(ParseError::BufferTooShort)),
-            "Expected BufferTooShort, got {:?}",
-            result
+            "Expected BufferTooShort, got {result:?}"
         );
     }
 
@@ -1006,8 +1005,7 @@ mod tests {
         let result = Message::parse(&[0; 8]);
         assert!(
             matches!(result, Err(ParseError::BufferTooShort)),
-            "Expected BufferTooShort, got {:?}",
-            result
+            "Expected BufferTooShort, got {result:?}"
         );
     }
 
@@ -1016,8 +1014,7 @@ mod tests {
         let result = Message::parse(&[0; 11]);
         assert!(
             matches!(result, Err(ParseError::BufferTooShort)),
-            "Expected BufferTooShort, got {:?}",
-            result
+            "Expected BufferTooShort, got {result:?}"
         );
     }
 

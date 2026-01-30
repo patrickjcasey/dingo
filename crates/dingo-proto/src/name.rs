@@ -570,8 +570,7 @@ mod tests {
         let result = Name::parse(&data, 0);
         assert!(
             matches!(result, Err(ParseError::CompressionPointerLoop)),
-            "Expected CompressionPointerLoop, got {:?}",
-            result
+            "Expected CompressionPointerLoop, got {result:?}"
         );
     }
 
@@ -589,8 +588,7 @@ mod tests {
         // The first pointer points forward, so we get ForwardPointer, not Loop
         assert!(
             matches!(result, Err(ParseError::CompressionPointerForward)),
-            "Expected CompressionPointerForward (first pointer is forward), got {:?}",
-            result
+            "Expected CompressionPointerForward (first pointer is forward), got {result:?}"
         );
     }
 
@@ -604,8 +602,7 @@ mod tests {
         let result = Name::parse(&data, 0);
         assert!(
             matches!(result, Err(ParseError::CompressionPointerOutOfBounds)),
-            "Expected CompressionPointerOutOfBounds, got {:?}",
-            result
+            "Expected CompressionPointerOutOfBounds, got {result:?}"
         );
     }
 
@@ -620,8 +617,7 @@ mod tests {
         let result = Name::parse(&data, 0);
         assert!(
             matches!(result, Err(ParseError::CompressionPointerForward)),
-            "Expected CompressionPointerForward, got {:?}",
-            result
+            "Expected CompressionPointerForward, got {result:?}"
         );
     }
 
@@ -646,8 +642,7 @@ mod tests {
         let result = Name::parse(&data, 0);
         assert!(
             matches!(result, Err(ParseError::LabelLengthTooLong)),
-            "Expected InvalidLabelLength, got {:?}",
-            result
+            "Expected InvalidLabelLength, got {result:?}"
         );
     }
 
@@ -659,8 +654,7 @@ mod tests {
         let result = Name::parse(&data, 0);
         assert!(
             matches!(result, Err(ParseError::LabelLengthTooLong)),
-            "Expected InvalidLabelLength for reserved bits, got {:?}",
-            result
+            "Expected InvalidLabelLength for reserved bits, got {result:?}"
         );
     }
 
@@ -684,8 +678,7 @@ mod tests {
         let result = Name::parse(&data, 0);
         assert!(
             result.is_ok(),
-            "255-byte name should be valid: {:?}",
-            result
+            "255-byte name should be valid: {result:?}"
         );
     }
 
@@ -704,8 +697,7 @@ mod tests {
         let result = Name::parse(&data, 0);
         assert!(
             matches!(result, Err(ParseError::NameTooLong)),
-            "Expected NameTooLong, got {:?}",
-            result
+            "Expected NameTooLong, got {result:?}"
         );
     }
 
@@ -715,8 +707,7 @@ mod tests {
         let result = Name::parse(&data, 0);
         assert!(
             matches!(result, Err(ParseError::BufferTooShort)),
-            "Expected BufferTooShort for empty buffer, got {:?}",
-            result
+            "Expected BufferTooShort for empty buffer, got {result:?}"
         );
     }
 
@@ -728,8 +719,7 @@ mod tests {
         let result = Name::parse(&data, 0);
         assert!(
             matches!(result, Err(ParseError::BufferTooShort)),
-            "Expected BufferTooShort for truncated label, got {:?}",
-            result
+            "Expected BufferTooShort for truncated label, got {result:?}"
         );
     }
 
@@ -741,8 +731,7 @@ mod tests {
         let result = Name::parse(&data, 0);
         assert!(
             matches!(result, Err(ParseError::BufferTooShort)),
-            "Expected BufferTooShort for missing terminator, got {:?}",
-            result
+            "Expected BufferTooShort for missing terminator, got {result:?}"
         );
     }
 
@@ -754,8 +743,7 @@ mod tests {
         let result = Name::parse(&data, 0);
         assert!(
             matches!(result, Err(ParseError::BufferTooShort)),
-            "Expected BufferTooShort for truncated pointer, got {:?}",
-            result
+            "Expected BufferTooShort for truncated pointer, got {result:?}"
         );
     }
 
@@ -773,7 +761,7 @@ mod tests {
         let data = [0x03, b'c', b'o', b'm', 0x00];
         let (name, _) = Name::parse(&data, 0).unwrap();
 
-        assert_eq!(format!("{}", name), name.to_string());
+        assert_eq!(format!("{name}"), name.to_string());
     }
 
     #[test]

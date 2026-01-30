@@ -31,7 +31,7 @@ fn iter_pkt_files(dir: &Path) -> impl Iterator<Item = std::path::PathBuf> {
         .expect("Failed to read directory")
         .filter_map(|e| e.ok())
         .map(|e| e.path())
-        .filter(|p| p.extension().map_or(false, |ext| ext == "pkt"))
+        .filter(|p| p.extension().is_some_and(|ext| ext == "pkt"))
 }
 
 // =============================================================================
@@ -70,8 +70,7 @@ fn test_cz_nic_fuzzing_corpus() {
     }
 
     println!(
-        "CZ-NIC corpus: {} packets tested, {} parsed OK, {} returned errors",
-        tested, parsed_ok, parsed_err
+        "CZ-NIC corpus: {tested} packets tested, {parsed_ok} parsed OK, {parsed_err} returned errors"
     );
 
     assert!(
@@ -240,7 +239,7 @@ fn test_valid_minimal_query() {
     ];
 
     let result = Message::parse(&packet);
-    assert!(result.is_ok(), "Failed to parse valid query: {:?}", result);
+    assert!(result.is_ok(), "Failed to parse valid query: {result:?}");
 
     let msg = result.unwrap();
     assert!(msg.is_query());
@@ -284,8 +283,7 @@ fn test_valid_response_with_a_record() {
     let result = Message::parse(&packet);
     assert!(
         result.is_ok(),
-        "Failed to parse valid response: {:?}",
-        result
+        "Failed to parse valid response: {result:?}"
     );
 
     let msg = result.unwrap();

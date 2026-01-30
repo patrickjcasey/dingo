@@ -688,8 +688,7 @@ mod tests {
         let result = ResourceRecord::parse(&data, 0);
         assert!(
             matches!(result, Err(ParseError::RdataOverflow)),
-            "Expected RdataOverflow, got {:?}",
-            result
+            "Expected RdataOverflow, got {result:?}"
         );
     }
 
@@ -707,7 +706,7 @@ mod tests {
         ];
 
         let result = ResourceRecord::parse(&data, 0);
-        assert!(result.is_ok(), "Expected success, got {:?}", result);
+        assert!(result.is_ok(), "Expected success, got {result:?}");
     }
 
     #[test]
@@ -726,8 +725,7 @@ mod tests {
         let result = ResourceRecord::parse(&data, 0);
         assert!(
             matches!(result, Err(ParseError::InvalidRdataLength)),
-            "Expected InvalidRdataLength for short A record, got {:?}",
-            result
+            "Expected InvalidRdataLength for short A record, got {result:?}"
         );
     }
 
@@ -747,8 +745,7 @@ mod tests {
         let result = ResourceRecord::parse(&data, 0);
         assert!(
             matches!(result, Err(ParseError::InvalidRdataLength)),
-            "Expected InvalidRdataLength for long A record, got {:?}",
-            result
+            "Expected InvalidRdataLength for long A record, got {result:?}"
         );
     }
 
@@ -769,8 +766,7 @@ mod tests {
         let result = ResourceRecord::parse(&data, 0);
         assert!(
             matches!(result, Err(ParseError::InvalidRdataLength)),
-            "Expected InvalidRdataLength for short AAAA record, got {:?}",
-            result
+            "Expected InvalidRdataLength for short AAAA record, got {result:?}"
         );
     }
 
@@ -783,8 +779,7 @@ mod tests {
         let result = ResourceRecord::parse(&[], 0);
         assert!(
             matches!(result, Err(ParseError::BufferTooShort)),
-            "Expected BufferTooShort, got {:?}",
-            result
+            "Expected BufferTooShort, got {result:?}"
         );
     }
 
@@ -796,8 +791,7 @@ mod tests {
         let result = ResourceRecord::parse(&data, 0);
         assert!(
             matches!(result, Err(ParseError::BufferTooShort)),
-            "Expected BufferTooShort, got {:?}",
-            result
+            "Expected BufferTooShort, got {result:?}"
         );
     }
 
@@ -814,8 +808,7 @@ mod tests {
         let result = ResourceRecord::parse(&data, 0);
         assert!(
             matches!(result, Err(ParseError::BufferTooShort)),
-            "Expected BufferTooShort, got {:?}",
-            result
+            "Expected BufferTooShort, got {result:?}"
         );
     }
 
@@ -833,8 +826,7 @@ mod tests {
         let result = ResourceRecord::parse(&data, 0);
         assert!(
             matches!(result, Err(ParseError::BufferTooShort)),
-            "Expected BufferTooShort, got {:?}",
-            result
+            "Expected BufferTooShort, got {result:?}"
         );
     }
 

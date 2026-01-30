@@ -390,8 +390,7 @@ mod tests {
         let result = Question::parse(&data, 0);
         assert!(
             matches!(result, Err(ParseError::BufferTooShort)),
-            "Expected BufferTooShort, got {:?}",
-            result
+            "Expected BufferTooShort, got {result:?}"
         );
     }
 
@@ -407,8 +406,7 @@ mod tests {
         let result = Question::parse(&data, 0);
         assert!(
             matches!(result, Err(ParseError::BufferTooShort)),
-            "Expected BufferTooShort, got {:?}",
-            result
+            "Expected BufferTooShort, got {result:?}"
         );
     }
 
@@ -425,8 +423,7 @@ mod tests {
         let result = Question::parse(&data, 0);
         assert!(
             matches!(result, Err(ParseError::BufferTooShort)),
-            "Expected BufferTooShort, got {:?}",
-            result
+            "Expected BufferTooShort, got {result:?}"
         );
     }
 
@@ -435,8 +432,7 @@ mod tests {
         let result = Question::parse(&[], 0);
         assert!(
             matches!(result, Err(ParseError::BufferTooShort)),
-            "Expected BufferTooShort, got {:?}",
-            result
+            "Expected BufferTooShort, got {result:?}"
         );
     }
 
@@ -452,8 +448,7 @@ mod tests {
         let result = Question::parse(&data, 0);
         assert!(
             matches!(result, Err(ParseError::CompressionPointerLoop)),
-            "Expected CompressionPointerLoop to propagate, got {:?}",
-            result
+            "Expected CompressionPointerLoop to propagate, got {result:?}"
         );
     }
 
