@@ -5,7 +5,7 @@
 [ci-badge]: https://img.shields.io/github/actions/workflow/status/patrickjcasey/dingo/ci.yml?branch=main
 [ci]: https://github.com/patrickjcasey/dingo/actions?query=branch%3Amain
 
-**An high-performance DNS toolkit for Rust, focused on speed and ease of use.
+**An high-performance DNS library written in Rust, focused on speed, security and ease of use.**
 
 ## Features
 
@@ -34,36 +34,12 @@ Add to your `Cargo.toml`:
 dingo-proto = "0.1"
 ```
 
-Example:
-
-```rust
-use dingo_proto::Message;
-
-fn main() {
-    let packet: &[u8] = [/* DNS packet bytes */];
-    match Message::parse(packet) {
-        Ok(message) => {
-            println!("Query ID: {}", message.header.id);
-
-            for question in &message.questions {
-                println!("Question: {} {:?}", question.name, question.qtype);
-            }
-
-            for answer in &message.answers {
-                println!("Answer: {} -> {:?}", answer.name, answer.rdata);
-            }
-        }
-        Err(e) => eprintln!("Parse error: {}", e),
-    }
-}
-```
-
 ## Running Tests
 
 ### Unit Tests
 
 ```bash
-cargo test --workspace --all-features
+cargo test
 ```
 
 ### Test Data Setup
@@ -85,9 +61,6 @@ To download additional test samples from the Wireshark wiki:
 ```bash
 # Run all workspace tests
 cargo test --workspace
-
-# Run tests including those that require test data
-cargo test --workspace --all-features
 ```
 
 ## Fuzzing
@@ -107,11 +80,11 @@ cargo install cargo-fuzz
 # Fuzz the main message parser
 cargo +nightly fuzz run --release --debug-assertions parse_message
 
-# Fuzz domain name parsing
-cargo +nightly fuzz run --release --debug-assertions parse_name
-
 # Fuzz with multiple parallel jobs
 cargo +nightly fuzz run --release --debug-assertions parse_message --jobs 4
+
+# Fuzz for a max of 30 seconds
+cargo +nightly fuzz run --release --debug-assertions parse_message -- -max_total_time 30
 ```
 
 ### Seeding the Corpus
@@ -122,21 +95,14 @@ Copy test data to the fuzzing corpus:
 # Copy CZ-NIC fuzzing seeds
 mkdir -p fuzz/corpus/parse_message
 cp testdata/dns-fuzzing/packet/*.pkt fuzz/corpus/parse_message/
-
-# Extract DNS payloads from pcap files (requires tshark)
 ./scripts/extract-dns-payloads.sh fuzz/corpus/parse_message testdata/samples/*.pcap
 ```
 
 ### Fuzz Targets
 
-| Target           | Description                                   |
-| ---------------- | --------------------------------------------- |
-| `parse_message`  | Complete DNS message parsing                  |
-| `parse_header`   | DNS header parsing only                       |
-| `parse_question` | Question section parsing                      |
-| `parse_rr`       | Resource record parsing                       |
-| `parse_name`     | Domain name with compression pointer handling |
-
+| Target          | Description                  |
+| --------------- | ---------------------------- |
+| `parse_message` | Complete DNS message parsing |
 ## Updating Test Data
 
 This project uses git submodules for external test data sources.
@@ -195,3 +161,7 @@ This downloads from the [Wireshark Wiki SampleCaptures](https://wiki.wireshark.o
 ## Relevant RFC
 - [RFC 1035](https://datatracker.ietf.org/doc/html/rfc1035) - Domain Names - Implementation and Specification
 - [RFC 9267](https://datatracker.ietf.org/doc/html/rfc9267) - Common Implementation Anti-Patterns
+
+## Notes on LLMs
+
+I wrote most of the code in this repository by hand, but I did use an LLM (Claude Opus 4.5) for helping write some of the tests, to experiment with code ideas, writing some of the helper bash scripts, help with configuring CI and help setting up some of the fuzzing work. I believe this is the future of software development and I see it as a force multiplier.
