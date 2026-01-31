@@ -1,4 +1,4 @@
-use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use domain::base::Message as DomainMessage;
 use hickory_proto::op::Message as HickoryMessage;
 

@@ -281,10 +281,7 @@ fn test_valid_response_with_a_record() {
     ];
 
     let result = Message::parse(&packet);
-    assert!(
-        result.is_ok(),
-        "Failed to parse valid response: {result:?}"
-    );
+    assert!(result.is_ok(), "Failed to parse valid response: {result:?}");
 
     let msg = result.unwrap();
     assert!(msg.is_response());

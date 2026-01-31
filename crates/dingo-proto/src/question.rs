@@ -8,8 +8,8 @@
 //! - [`Question`] - Zero-copy borrowed type that references packet data
 //! - [`QuestionOwned`] - Owned type that stores the name in an allocated vector
 
-use crate::ParseError;
 use crate::name::{Name, NameOwned};
+use crate::ParseError;
 
 /// A zero-copy DNS question entry.
 ///

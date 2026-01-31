@@ -676,10 +676,7 @@ mod tests {
         data.push(0x00);
 
         let result = Name::parse(&data, 0);
-        assert!(
-            result.is_ok(),
-            "255-byte name should be valid: {result:?}"
-        );
+        assert!(result.is_ok(), "255-byte name should be valid: {result:?}");
     }
 
     #[test]

@@ -11,8 +11,8 @@
 
 use alloc::vec::Vec;
 
-use crate::ParseError;
 use crate::name::{Name, NameOwned};
+use crate::ParseError;
 
 /// A zero-copy DNS resource record.
 ///
@@ -559,7 +559,7 @@ mod tests {
         let (rr, end_offset) = ResourceRecord::parse(&data, 0).unwrap();
 
         assert_eq!(rr.rtype, 15); // MX
-        // First two bytes of rdata should be preference
+                                  // First two bytes of rdata should be preference
         assert_eq!(u16::from_be_bytes([rr.rdata[0], rr.rdata[1]]), 10);
         assert_eq!(end_offset, data.len());
     }
