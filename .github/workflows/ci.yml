@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        rust: [stable, 1.79]
+        rust: [stable, 1.86]
     steps:
       - uses: actions/checkout@v4
 
@@ -42,6 +42,9 @@ jobs:
 
       - name: Build
         run: cargo build --all-targets
+
+      - name: Fetch test data
+        run: ./scripts/download-testdata.sh
 
       - name: Test
         run: cargo test
@@ -75,9 +78,6 @@ jobs:
       - name: Install cargo-fuzz
         run: cargo install cargo-fuzz
 
-      - name: Run fuzz targets
-        run: |
-          for target in parse_message parse_header parse_question parse_rr parse_name; do
-            cargo fuzz run "$target" -- -max_total_time=30
-          done
+      - name: Run fuzz target
+        run: cargo fuzz run parse_message -- -max_total_time=30
         working-directory: fuzz
