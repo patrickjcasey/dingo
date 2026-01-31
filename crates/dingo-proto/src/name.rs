@@ -87,7 +87,7 @@ impl<'a> Name<'a> {
             // Check for loops
             let pos_u16 = pos as u16;
 
-            for visited in visited.iter() {
+            for visited in &visited[..visited_count] {
                 if *visited == pos_u16 {
                     return Err(ParseError::CompressionPointerLoop);
                 }
