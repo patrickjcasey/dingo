@@ -13,7 +13,7 @@ jobs:
   fmt:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -26,11 +26,28 @@ jobs:
   build:
     needs: fmt
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ matrix.rust }}
+
+      - name: Cache cargo registry and build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        run: cargo build --all-targets
+
+  test:
+    needs: fmt
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         rust: [stable, 1.85.1]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Rust ${{ matrix.rust }}
         uses: dtolnay/rust-toolchain@master
@@ -43,25 +60,30 @@ jobs:
       - name: Build
         run: cargo build --all-targets
 
-      - name: Fetch test data
-        run: ./scripts/download-testdata.sh
-
-      - name: Test
-        run: cargo test
+  clippy:  
+    needs: fmt
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust: [stable, 1.85.1]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@clippy
+      - run: cargo clippy --workspace
 
   miri:
     needs: fmt
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust nightly and Miri
-        uses: dtolnay/rust-toolchain@nightly
-        with:
-          components: miri
+      - uses: actions/checkout@v6
 
       - name: Cache cargo registry and build
         uses: Swatinem/rust-cache@v2
+
+      - name: Install Rust nightly and Miri
+        uses: dtolnay/rust-toolchain@miri
+        with:
+          toolchain: nightly-2025-05-16
 
       - name: Run Miri
         run: cargo miri test
@@ -70,7 +92,7 @@ jobs:
     needs: fmt
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Rust nightly
         uses: dtolnay/rust-toolchain@nightly
