@@ -268,7 +268,7 @@ impl<'a> Message<'a> {
     }
 }
 
-impl<'a> Message<'a> {
+impl Message<'_> {
     /// Converts this borrowed message to an owned [`MessageOwned`].
     ///
     /// This parses and allocates memory for all sections. Since `Message::parse`

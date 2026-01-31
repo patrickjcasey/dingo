@@ -86,8 +86,9 @@ impl<'a> Name<'a> {
         loop {
             // Check for loops
             let pos_u16 = pos as u16;
-            for i in 0..visited_count {
-                if visited[i] == pos_u16 {
+
+            for visited in visited.iter() {
+                if *visited == pos_u16 {
                     return Err(ParseError::CompressionPointerLoop);
                 }
             }
@@ -188,10 +189,8 @@ impl<'a> Name<'a> {
     /// This is the sum of: 1 byte per label for length + label bytes + 1 byte for root.
     pub fn encoded_len(&self) -> usize {
         let mut len = 1; // Root label
-        for label in self.labels() {
-            if let Ok(l) = label {
-                len += 1 + l.len();
-            }
+        for label in self.labels().flatten() {
+            len += 1 + label.len();
         }
         len
     }
@@ -222,14 +221,12 @@ impl<'a> Name<'a> {
     }
 }
 
-impl<'a> core::fmt::Display for Name<'a> {
+impl core::fmt::Display for Name<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let mut has_labels = false;
-        for label in self.labels() {
-            if let Ok(l) = label {
-                write!(f, "{}.", String::from_utf8_lossy(l))?;
-                has_labels = true;
-            }
+        for label in self.labels().flatten() {
+            write!(f, "{}.", String::from_utf8_lossy(label))?;
+            has_labels = true;
         }
         if !has_labels {
             write!(f, ".")?;
