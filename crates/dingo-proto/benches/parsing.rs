@@ -155,10 +155,6 @@ const RESPONSE_HEAVY_COMPRESSION: &[u8] = &[
     // Total: 16 bytes, ends at offset 97
 ];
 
-// ============================================================================
-// Benchmarks grouped by test case for easy comparison
-// ============================================================================
-
 fn bench_minimal_query(c: &mut Criterion) {
     let mut group = c.benchmark_group("minimal_query");
     group.throughput(Throughput::Bytes(MINIMAL_QUERY.len() as u64));

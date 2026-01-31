@@ -1,13 +1,3 @@
-//! DNS message parsing.
-//!
-//! This module provides the main entry point for parsing DNS messages as
-//! specified in RFC 1035 Section 4.
-//!
-//! # Type Variants
-//!
-//! - [`Message`] - Zero-copy borrowed type with lazy iteration
-//! - [`MessageOwned`] - Owned type with all sections parsed into vectors
-
 use alloc::vec::Vec;
 
 use crate::question::{Question, QuestionOwned};
@@ -25,25 +15,7 @@ use crate::{Header, ParseError, QR};
 /// This type only parses the header on construction. The sections are parsed
 /// lazily when you iterate over them, yielding `Result` items to handle
 /// per-record parsing errors.
-///
-/// # Example
-///
-/// ```ignore
-/// use dingo_proto::Message;
-///
-/// let packet = [/* ... DNS packet bytes ... */];
-/// let message = Message::parse(&packet)?;
-///
-/// // Header is already parsed
-/// if message.is_query() {
-///     // Questions are parsed lazily
-///     for question in message.questions() {
-///         let q = question?;
-///         println!("Query for: {}", q.name);
-///     }
-/// }
-/// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub struct Message<'a> {
     /// The DNS header containing flags and section counts.
     pub header: Header,
@@ -52,72 +24,30 @@ pub struct Message<'a> {
 }
 
 impl<'a> Message<'a> {
-    /// Parse and validate a DNS message from raw packet data.
+    /// Parse and validate a DNS message from raw bytes
     ///
     /// This validates the entire packet including all sections (questions,
     /// answers, authorities, additionals). If validation succeeds, the
     /// iterators are guaranteed to yield valid records.
-    ///
-    /// # Arguments
-    ///
-    /// * `packet` - The raw DNS packet bytes
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if:
-    /// - The packet is too short for a valid header ([`ParseError::BufferTooShort`])
-    /// - Any domain name is malformed (compression pointer issues, length issues)
-    /// - Record counts don't match actual records
-    /// - RDATA length issues ([`ParseError::RdataOverflow`], [`ParseError::InvalidRdataLength`])
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use dingo_proto::Message;
-    ///
-    /// // Minimal DNS query for example.com A
-    /// let packet = [
-    ///     0x12, 0x34, // ID
-    ///     0x01, 0x00, // Flags: standard query, RD=1
-    ///     0x00, 0x01, // QDCOUNT = 1
-    ///     0x00, 0x00, // ANCOUNT = 0
-    ///     0x00, 0x00, // NSCOUNT = 0
-    ///     0x00, 0x00, // ARCOUNT = 0
-    ///     0x07, b'e', b'x', b'a', b'm', b'p', b'l', b'e',
-    ///     0x03, b'c', b'o', b'm',
-    ///     0x00,
-    ///     0x00, 0x01, // QTYPE = A
-    ///     0x00, 0x01, // QCLASS = IN
-    /// ];
-    ///
-    /// let msg = Message::parse(&packet).unwrap();
-    /// assert!(msg.is_query());
-    /// ```
     pub fn parse(packet: &'a [u8]) -> Result<Self, ParseError> {
         let (header, _remainder) = Header::parse(packet)?;
 
-        // Validate all sections upfront
         let mut offset = Header::SIZE;
-
-        // Validate questions
         for _ in 0..header.qdcount() {
             let (_, next_offset) = Question::parse(packet, offset)?;
             offset = next_offset;
         }
 
-        // Validate answers
         for _ in 0..header.ancount() {
             let (_, next_offset) = ResourceRecord::parse(packet, offset)?;
             offset = next_offset;
         }
 
-        // Validate authorities
         for _ in 0..header.nscount() {
             let (_, next_offset) = ResourceRecord::parse(packet, offset)?;
             offset = next_offset;
         }
 
-        // Validate additionals
         for _ in 0..header.arcount() {
             let (_, next_offset) = ResourceRecord::parse(packet, offset)?;
             offset = next_offset;
@@ -130,15 +60,6 @@ impl<'a> Message<'a> {
     ///
     /// Each item is a `Result<Question<'a>, ParseError>` to handle parsing errors
     /// that may occur during iteration.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// for question in msg.questions() {
-    ///     let q = question?;
-    ///     println!("Query: {} type {}", q.name, q.qtype);
-    /// }
-    /// ```
     pub fn questions(&self) -> QuestionIter<'a> {
         QuestionIter {
             packet: self.packet,
@@ -345,11 +266,14 @@ impl<'a> Message<'a> {
     pub fn packet(&self) -> &'a [u8] {
         self.packet
     }
+}
 
+impl<'a> Message<'a> {
     /// Converts this borrowed message to an owned [`MessageOwned`].
     ///
-    /// This parses all sections and allocates memory to store them.
-    /// Any parsing errors during conversion will be returned.
+    /// This parses and allocates memory for all sections. Since `Message::parse`
+    /// validates the entire packet upfront, this should not fail for a validly
+    /// parsed message.
     pub fn into_owned(self) -> Result<MessageOwned, ParseError> {
         let questions: Result<Vec<_>, _> = self
             .questions()
@@ -469,21 +393,6 @@ impl<'a> Iterator for ResourceRecordIter<'a> {
 /// - Answer section: resource records answering the question
 /// - Authority section: resource records pointing to authoritative name servers
 /// - Additional section: resource records with additional information
-///
-/// # Example
-///
-/// ```ignore
-/// use dingo_proto::MessageOwned;
-///
-/// let packet = [/* ... DNS packet bytes ... */];
-/// let message = MessageOwned::parse(&packet)?;
-///
-/// if message.is_query() {
-///     println!("Query for: {:?}", message.questions);
-/// } else {
-///     println!("Response with {} answers", message.answers.len());
-/// }
-/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MessageOwned {
     /// The DNS header containing flags and section counts.
@@ -511,18 +420,6 @@ impl MessageOwned {
     /// Parse a DNS message from raw packet data.
     ///
     /// This eagerly parses all sections, allocating memory for each record.
-    ///
-    /// # Arguments
-    ///
-    /// * `data` - The raw DNS packet bytes
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if:
-    /// - The packet is too short for a valid header ([`ParseError::BufferTooShort`])
-    /// - Any domain name is malformed (compression pointer issues, length issues)
-    /// - Record counts don't match actual records ([`ParseError::InvalidRecordCount`])
-    /// - RDATA length issues ([`ParseError::RdataOverflow`], [`ParseError::InvalidRdataLength`])
     pub fn parse(data: &[u8]) -> Result<Self, ParseError> {
         let msg = Message::parse(data)?;
         msg.into_owned()
@@ -577,10 +474,6 @@ impl MessageOwned {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // =========================================================================
-    // Basic Query Parsing Tests
-    // =========================================================================
 
     #[test]
     fn test_parse_minimal_query() {
@@ -675,10 +568,6 @@ mod tests {
         assert!(q.name.is_root());
         assert_eq!(q.qtype, 2);
     }
-
-    // =========================================================================
-    // Response Parsing Tests
-    // =========================================================================
 
     #[test]
     fn test_parse_response_with_single_answer() {
@@ -867,10 +756,6 @@ mod tests {
         assert_eq!(msg.additionals().count(), 1);
     }
 
-    // =========================================================================
-    // Response Code Tests
-    // =========================================================================
-
     #[test]
     fn test_parse_nxdomain_response() {
         // NXDOMAIN response (name does not exist)
@@ -912,10 +797,6 @@ mod tests {
         assert!(msg.is_error());
     }
 
-    // =========================================================================
-    // Header Flag Tests
-    // =========================================================================
-
     #[test]
     fn test_parse_truncated_response() {
         // Response with TC (truncated) flag set
@@ -935,10 +816,6 @@ mod tests {
 
         assert!(msg.truncated());
     }
-
-    // =========================================================================
-    // Empty Sections Tests
-    // =========================================================================
 
     #[test]
     fn test_parse_header_only_all_zeros() {
@@ -986,10 +863,6 @@ mod tests {
         assert_eq!(msg.answers().count(), 1);
     }
 
-    // =========================================================================
-    // Buffer Boundary Error Tests
-    // =========================================================================
-
     #[test]
     fn test_empty_packet() {
         let result = Message::parse(&[]);
@@ -1017,10 +890,6 @@ mod tests {
             "Expected BufferTooShort, got {result:?}"
         );
     }
-
-    // =========================================================================
-    // Record Count Mismatch Tests
-    // =========================================================================
 
     #[test]
     fn test_qdcount_exceeds_data() {
@@ -1061,10 +930,6 @@ mod tests {
         let result = Message::parse(&packet);
         assert!(result.is_err(), "Expected error for missing questions");
     }
-
-    // =========================================================================
-    // Compression Pointer Tests
-    // =========================================================================
 
     #[test]
     fn test_response_with_compression_pointers() {
@@ -1109,10 +974,6 @@ mod tests {
         );
     }
 
-    // =========================================================================
-    // Name Error Propagation Tests
-    // =========================================================================
-
     #[test]
     fn test_compression_pointer_loop_in_question() {
         // Question with self-referential compression pointer
@@ -1132,10 +993,6 @@ mod tests {
         let result = Message::parse(&packet);
         assert!(matches!(result, Err(ParseError::CompressionPointerLoop)));
     }
-
-    // =========================================================================
-    // Owned conversion tests
-    // =========================================================================
 
     #[test]
     fn test_message_into_owned() {
@@ -1192,10 +1049,6 @@ mod tests {
         assert_eq!(msg.questions.len(), 1);
         assert_eq!(msg.questions[0].name.to_string(), "com.");
     }
-
-    // =========================================================================
-    // Extra Data Tests
-    // =========================================================================
 
     #[test]
     fn test_extra_data_after_message() {

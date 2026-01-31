@@ -1,25 +1,14 @@
-//! DNS resource record parsing.
-//!
-//! This module handles parsing of resource records (RRs) as specified in
-//! RFC 1035 Section 4.1.3. Resource records appear in the answer, authority,
-//! and additional sections of DNS messages.
-//!
-//! # Type Variants
-//!
-//! - [`ResourceRecord`] - Zero-copy borrowed type that references packet data
-//! - [`ResourceRecordOwned`] - Owned type that stores data in allocated vectors
-
 use alloc::vec::Vec;
 
-use crate::name::{Name, NameOwned};
 use crate::ParseError;
+use crate::name::{Name, NameOwned};
 
 /// A zero-copy DNS resource record.
 ///
 /// Resource records contain the actual DNS data such as IP addresses,
 /// name server information, mail exchange records, etc. This borrowed variant
 /// references the original packet data without allocation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub struct ResourceRecord<'a> {
     /// The domain name to which this record pertains.
     pub name: Name<'a>,
@@ -67,59 +56,31 @@ pub struct ResourceRecord<'a> {
 }
 
 impl<'a> ResourceRecord<'a> {
+    const RTYPE_LEN: usize = core::mem::size_of::<u16>();
+    const RCLASS_LEN: usize = core::mem::size_of::<u16>();
+    const TTL_LEN: usize = core::mem::size_of::<u32>();
+    const RDLENGTH_LEN: usize = core::mem::size_of::<u16>();
+
     /// Parse a resource record from the packet data starting at the given offset.
     ///
     /// Returns the parsed record and the offset immediately after the record.
-    ///
-    /// # Arguments
-    ///
-    /// * `packet` - The complete DNS packet data (needed for name decompression)
-    /// * `offset` - The offset within `packet` where the record starts
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if:
-    /// - The buffer is too short
-    /// - The domain name is invalid (see [`Name::parse`])
-    /// - RDLENGTH exceeds remaining packet data ([`ParseError::RdataOverflow`])
-    /// - RDLENGTH is invalid for the record type ([`ParseError::InvalidRdataLength`])
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// // A record for "www" pointing to 1.2.3.4
-    /// let data = [
-    ///     0x03, b'w', b'w', b'w', 0x00, // name: www.
-    ///     0x00, 0x01,                   // TYPE = A
-    ///     0x00, 0x01,                   // CLASS = IN
-    ///     0x00, 0x00, 0x00, 0x3C,       // TTL = 60
-    ///     0x00, 0x04,                   // RDLENGTH = 4
-    ///     0x01, 0x02, 0x03, 0x04,       // RDATA = 1.2.3.4
-    /// ];
-    /// let (rr, next_offset) = ResourceRecord::parse(&data, 0)?;
-    /// assert_eq!(rr.rtype, 1);
-    /// assert_eq!(rr.rdata, [1, 2, 3, 4]);
-    /// ```
     pub fn parse(packet: &'a [u8], offset: usize) -> Result<(Self, usize), ParseError> {
         // 1. Parse the domain name using Name::parse
         let (name, mut pos) = Name::parse(packet, offset)?;
 
-        // 2. Read TYPE (2 bytes, big-endian)
-        if pos + 2 > packet.len() {
+        if pos + Self::RTYPE_LEN > packet.len() {
             return Err(ParseError::BufferTooShort);
         }
         let rtype = u16::from_be_bytes([packet[pos], packet[pos + 1]]);
-        pos += 2;
+        pos += Self::RTYPE_LEN;
 
-        // 3. Read CLASS (2 bytes, big-endian)
-        if pos + 2 > packet.len() {
+        if pos + Self::RCLASS_LEN > packet.len() {
             return Err(ParseError::BufferTooShort);
         }
         let rclass = u16::from_be_bytes([packet[pos], packet[pos + 1]]);
-        pos += 2;
+        pos += Self::RCLASS_LEN;
 
-        // 4. Read TTL (4 bytes, big-endian)
-        if pos + 4 > packet.len() {
+        if pos + Self::TTL_LEN > packet.len() {
             return Err(ParseError::BufferTooShort);
         }
         let ttl = u32::from_be_bytes([
@@ -128,22 +89,19 @@ impl<'a> ResourceRecord<'a> {
             packet[pos + 2],
             packet[pos + 3],
         ]);
-        pos += 4;
+        pos += Self::TTL_LEN;
 
-        // 5. Read RDLENGTH (2 bytes, big-endian)
-        if pos + 2 > packet.len() {
+        if pos + Self::RDLENGTH_LEN > packet.len() {
             return Err(ParseError::BufferTooShort);
         }
         let rdlength = u16::from_be_bytes([packet[pos], packet[pos + 1]]);
-        pos += 2;
-
-        // 6. Validate that RDLENGTH bytes are available in the remaining data
+        pos += Self::RDLENGTH_LEN;
         let rdlength_usize = rdlength as usize;
+
         if pos + rdlength_usize > packet.len() {
             return Err(ParseError::RdataOverflow);
         }
 
-        // 7. For known types (A, AAAA), validate RDLENGTH matches expected size
         match rtype {
             1 => {
                 // A record must have exactly 4 bytes
@@ -162,11 +120,9 @@ impl<'a> ResourceRecord<'a> {
             }
         }
 
-        // 8. Get RDATA slice (zero-copy)
         let rdata = &packet[pos..pos + rdlength_usize];
         pos += rdlength_usize;
 
-        // 9. Return the ResourceRecord and offset after RDATA
         let rr = Self {
             name,
             rtype,
@@ -229,24 +185,22 @@ impl<'a> ResourceRecord<'a> {
         self.packet
     }
 
-    /// Converts this borrowed record to an owned [`ResourceRecordOwned`].
-    ///
-    /// This allocates memory to store the name and RDATA.
+    /// Converts this borrowed resource record to an owned [`ResourceRecordOwned`].
     pub fn into_owned(self) -> ResourceRecordOwned {
-        ResourceRecordOwned {
-            name: self.name.into_owned(),
-            rtype: self.rtype,
-            rclass: self.rclass,
-            ttl: self.ttl,
-            rdlength: self.rdlength,
-            rdata: self.rdata.to_vec(),
-        }
+        self.into()
     }
 }
 
 impl<'a> From<ResourceRecord<'a>> for ResourceRecordOwned {
     fn from(rr: ResourceRecord<'a>) -> Self {
-        rr.into_owned()
+        ResourceRecordOwned {
+            name: rr.name.into_owned(),
+            rtype: rr.rtype,
+            rclass: rr.rclass,
+            ttl: rr.ttl,
+            rdlength: rr.rdlength,
+            rdata: rr.rdata.to_vec(),
+        }
     }
 }
 
@@ -304,22 +258,9 @@ impl ResourceRecordOwned {
     ///
     /// Returns the parsed record and the offset immediately after the record.
     /// This immediately converts to owned, allocating memory for the name and RDATA.
-    ///
-    /// # Arguments
-    ///
-    /// * `packet` - The complete DNS packet data (needed for name decompression)
-    /// * `offset` - The offset within `packet` where the record starts
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if:
-    /// - The buffer is too short
-    /// - The domain name is invalid (see [`Name::parse`])
-    /// - RDLENGTH exceeds remaining packet data ([`ParseError::RdataOverflow`])
-    /// - RDLENGTH is invalid for the record type ([`ParseError::InvalidRdataLength`])
     pub fn parse(packet: &[u8], offset: usize) -> Result<(Self, usize), ParseError> {
         let (rr, end) = ResourceRecord::parse(packet, offset)?;
-        Ok((rr.into_owned(), end))
+        Ok((rr.into(), end))
     }
 
     /// Returns true if this is an A record (IPv4 address).
@@ -368,10 +309,6 @@ impl ResourceRecordOwned {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // =========================================================================
-    // A Record Tests
-    // =========================================================================
 
     #[test]
     fn test_parse_a_record() {
@@ -437,10 +374,6 @@ mod tests {
         assert_eq!(end_offset, data.len());
     }
 
-    // =========================================================================
-    // AAAA Record Tests
-    // =========================================================================
-
     #[test]
     fn test_parse_aaaa_record() {
         // AAAA record pointing to 2001:db8::1
@@ -487,10 +420,6 @@ mod tests {
         assert_eq!(end_offset, data.len());
     }
 
-    // =========================================================================
-    // CNAME Record Tests
-    // =========================================================================
-
     #[test]
     fn test_parse_cname_record() {
         // CNAME record: www.example.com -> example.com
@@ -513,10 +442,6 @@ mod tests {
         assert_eq!(end_offset, data.len());
     }
 
-    // =========================================================================
-    // NS Record Tests
-    // =========================================================================
-
     #[test]
     fn test_parse_ns_record() {
         #[rustfmt::skip]
@@ -537,10 +462,6 @@ mod tests {
         assert_eq!(end_offset, data.len());
     }
 
-    // =========================================================================
-    // MX Record Tests
-    // =========================================================================
-
     #[test]
     fn test_parse_mx_record() {
         // MX record with preference 10
@@ -559,14 +480,10 @@ mod tests {
         let (rr, end_offset) = ResourceRecord::parse(&data, 0).unwrap();
 
         assert_eq!(rr.rtype, 15); // MX
-                                  // First two bytes of rdata should be preference
+        // First two bytes of rdata should be preference
         assert_eq!(u16::from_be_bytes([rr.rdata[0], rr.rdata[1]]), 10);
         assert_eq!(end_offset, data.len());
     }
-
-    // =========================================================================
-    // TXT Record Tests
-    // =========================================================================
 
     #[test]
     fn test_parse_txt_record() {
@@ -590,10 +507,6 @@ mod tests {
         assert_eq!(end_offset, data.len());
     }
 
-    // =========================================================================
-    // OPT Record Tests (EDNS)
-    // =========================================================================
-
     #[test]
     fn test_parse_opt_record() {
         // OPT pseudo-record (EDNS)
@@ -613,10 +526,6 @@ mod tests {
         assert_eq!(rr.rclass, 4096); // UDP payload size
         assert_eq!(end_offset, data.len());
     }
-
-    // =========================================================================
-    // Compression Pointer Tests
-    // =========================================================================
 
     #[test]
     fn test_parse_rr_with_compression_pointer() {
@@ -667,10 +576,6 @@ mod tests {
         assert_eq!(rr.rdata, [1, 2, 3, 4]);
         assert_eq!(end_offset, data.len());
     }
-
-    // =========================================================================
-    // RDLENGTH Validation Tests
-    // =========================================================================
 
     #[test]
     fn test_rdlength_overflow() {
@@ -770,10 +675,6 @@ mod tests {
         );
     }
 
-    // =========================================================================
-    // Buffer Boundary Tests
-    // =========================================================================
-
     #[test]
     fn test_parse_rr_empty_buffer() {
         let result = ResourceRecord::parse(&[], 0);
@@ -830,10 +731,6 @@ mod tests {
         );
     }
 
-    // =========================================================================
-    // Helper Method Tests
-    // =========================================================================
-
     #[test]
     fn test_as_ipv4_wrong_type() {
         // AAAA record should return None for as_ipv4()
@@ -885,10 +782,6 @@ mod tests {
         assert_eq!(end_offset, a_record.len());
     }
 
-    // =========================================================================
-    // Zero-length RDATA Tests
-    // =========================================================================
-
     #[test]
     fn test_parse_rr_zero_rdlength() {
         // Some record types can have zero-length RDATA
@@ -908,10 +801,6 @@ mod tests {
         assert_eq!(end_offset, data.len());
     }
 
-    // =========================================================================
-    // Owned type tests
-    // =========================================================================
-
     #[test]
     fn test_resource_record_into_owned() {
         #[rustfmt::skip]
@@ -925,7 +814,7 @@ mod tests {
         ];
 
         let (rr, _) = ResourceRecord::parse(&data, 0).unwrap();
-        let owned: ResourceRecordOwned = rr.into_owned();
+        let owned: ResourceRecordOwned = rr.into();
 
         assert_eq!(owned.name.to_string(), "www.");
         assert_eq!(owned.rtype, 1);

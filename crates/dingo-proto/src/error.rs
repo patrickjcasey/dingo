@@ -32,6 +32,12 @@ pub enum ParseError {
     InvalidRdataLength,
     /// Record count in header doesn't match actual records in packet.
     InvalidRecordCount,
+    /// Reserved bit in header Z field is set (must be zero per RFC 1035).
+    ReservedHeaderBit,
+    /// Unknown or reserved OPCODE value (6-15).
+    InvalidOpcode,
+    /// Unknown or reserved RCODE value (11-15).
+    InvalidResponseCode,
 }
 
 impl Display for ParseError {
@@ -50,6 +56,9 @@ impl Display for ParseError {
             ParseError::RdataOverflow => write!(f, "RDLENGTH exceeds remaining packet"),
             ParseError::InvalidRdataLength => write!(f, "RDLENGTH invalid for record type"),
             ParseError::InvalidRecordCount => write!(f, "record count mismatch"),
+            ParseError::ReservedHeaderBit => write!(f, "reserved header bit is set"),
+            ParseError::InvalidOpcode => write!(f, "invalid or reserved opcode"),
+            ParseError::InvalidResponseCode => write!(f, "invalid or reserved response code"),
         }
     }
 }

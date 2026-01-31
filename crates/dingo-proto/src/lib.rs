@@ -71,16 +71,33 @@ pub enum ResponseCode {
     NameError,
     NotImplemented,
     Refused,
-    /// Reserved for future use (values 6-15)
+    /// Extended RCODE values (6-10) or reserved values.
+    ///
+    /// Values 6-10 are used by DNS UPDATE (RFC 2136) and other extensions:
+    /// - 6 = YXDomain (name exists when it should not)
+    /// - 7 = YXRRSet (RR set exists when it should not)
+    /// - 8 = NXRRSet (RR set does not exist when it should)
+    /// - 9 = NotAuth (server not authoritative / not authorized)
+    /// - 10 = NotZone (name not in zone)
     Reserved,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Header([u8; Self::SIZE]);
 
 impl Header {
     /// number of bytes needed to construct a `Header` within a DNS Request
     const SIZE: usize = 12;
+
+    /// The reserved Z bit mask (bit 9, 0x40 in byte 3).
+    /// Bits 10-11 (AD/CD) are used by DNSSEC and are allowed.
+    const RESERVED_Z_BIT: u8 = 0x40;
+
+    /// Maximum valid OPCODE (0-5 are assigned, 6-15 are reserved).
+    const MAX_VALID_OPCODE: u8 = 5;
+
+    /// Maximum valid RCODE (0-10 are assigned, 11-15 are reserved).
+    const MAX_VALID_RCODE: u8 = 10;
 
     #[inline]
     pub fn parse(bytes: &[u8]) -> Result<(Self, &[u8]), ParseError> {
@@ -88,8 +105,26 @@ impl Header {
             return Err(ParseError::BufferTooShort);
         }
         let (header, remainder) = bytes.split_at(Self::SIZE);
-        // TODO: validate all of the fields are valid
         let header = <[u8; 12]>::try_from(header).unwrap();
+
+        // Validate reserved Z bit (bit 9) is zero.
+        // Note: Bits 10-11 (AD/CD) are used by DNSSEC (RFC 4035) and are allowed.
+        if header[3] & Self::RESERVED_Z_BIT != 0 {
+            return Err(ParseError::ReservedHeaderBit);
+        }
+
+        // Validate OPCODE is in known range (0-5).
+        let opcode = (header[2] >> 3) & 0x0F;
+        if opcode > Self::MAX_VALID_OPCODE {
+            return Err(ParseError::InvalidOpcode);
+        }
+
+        // Validate RCODE is in known range (0-10).
+        let rcode = header[3] & 0x0F;
+        if rcode > Self::MAX_VALID_RCODE {
+            return Err(ParseError::InvalidResponseCode);
+        }
+
         Ok((Self(header), remainder))
     }
 
@@ -112,10 +147,13 @@ impl Header {
     }
 
     /// Returns a 4-bit field specifying the kind of query:
-    /// 0 = standard query (QUERY)
-    /// 1 = inverse query (IQUERY)
-    /// 2 = server status request (STATUS)
-    /// 3-15 = reserved for future use
+    /// - 0 = standard query (QUERY)
+    /// - 1 = inverse query (IQUERY, obsolete per RFC 3425)
+    /// - 2 = server status request (STATUS)
+    /// - 3 = reserved
+    /// - 4 = notify (NOTIFY, RFC 1996)
+    /// - 5 = update (UPDATE, RFC 2136)
+    /// - 6-15 = reserved for future use
     #[inline]
     pub fn opcode(&self) -> u8 {
         (self.0[2] >> 3) & 0x0F

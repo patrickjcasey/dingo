@@ -37,22 +37,7 @@ pub const MAX_POINTER_CHAIN: usize = 128;
 /// Domain names in DNS are represented as a sequence of labels, where each label
 /// is a length-prefixed string. Names can use compression pointers to refer to
 /// previously occurring names in the message.
-///
-/// # Example
-///
-/// ```ignore
-/// let packet = [
-///     0x07, b'e', b'x', b'a', b'm', b'p', b'l', b'e',
-///     0x03, b'c', b'o', b'm',
-///     0x00,
-/// ];
-/// let (name, end) = Name::parse(&packet, 0)?;
-/// assert_eq!(name.to_string(), "example.com.");
-///
-/// // Convert to owned for storage
-/// let owned: NameOwned = name.into_owned();
-/// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub struct Name<'a> {
     /// The complete DNS packet data (needed for compression pointers).
     packet: &'a [u8],
@@ -71,32 +56,6 @@ impl<'a> Name<'a> {
     /// This method only validates that the name structure is valid; it does not
     /// decompress the name. Use [`labels()`](Self::labels) to iterate over the
     /// decompressed labels.
-    ///
-    /// # Arguments
-    ///
-    /// * `packet` - The complete DNS packet data (needed for compression pointers)
-    /// * `offset` - The offset within `packet` where the name starts
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if:
-    /// - The buffer is too short
-    /// - A compression pointer creates a loop
-    /// - A compression pointer points out of bounds
-    /// - A compression pointer points forward
-    /// - A label exceeds 63 octets
-    /// - The decompressed name exceeds 255 octets
-    ///
-    /// # Example
-    /// ```ignore
-    /// let packet = [
-    ///     0x07, b'e', b'x', b'a', b'm', b'p', b'l', b'e',
-    ///     0x03, b'c', b'o', b'm',
-    ///     0x00,
-    /// ];
-    /// let (name, end_offset) = Name::parse(&packet, 0)?;
-    /// assert_eq!(name.to_string(), "example.com.");
-    /// assert_eq!(end_offset, 13);
     /// ```
     pub fn parse(packet: &'a [u8], offset: usize) -> Result<(Self, usize), ParseError> {
         // Validate the name structure and find the end position
@@ -213,16 +172,6 @@ impl<'a> Name<'a> {
     /// Each item is a `Result<&'a [u8], ParseError>` to handle any parsing
     /// errors that occur during iteration (though errors are unlikely if
     /// `parse()` succeeded).
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// let (name, _) = Name::parse(&packet, 0)?;
-    /// for label in name.labels() {
-    ///     let label = label?;
-    ///     println!("{}", String::from_utf8_lossy(label));
-    /// }
-    /// ```
     #[inline]
     pub fn labels(&self) -> LabelIter<'a> {
         LabelIter::new(self.packet, self.start)
@@ -249,7 +198,7 @@ impl<'a> Name<'a> {
 
     /// Returns the packet data this name references.
     #[inline]
-    pub fn packet(&self) -> &'a [u8] {
+    pub fn as_bytes(&self) -> &'a [u8] {
         self.packet
     }
 
@@ -263,6 +212,13 @@ impl<'a> Name<'a> {
     #[inline]
     pub fn end(&self) -> usize {
         self.end
+    }
+
+    /// Converts this borrowed name to an owned [`NameOwned`].
+    ///
+    /// This allocates memory to store all the labels.
+    pub fn into_owned(self) -> NameOwned {
+        self.into()
     }
 }
 
@@ -282,23 +238,14 @@ impl<'a> core::fmt::Display for Name<'a> {
     }
 }
 
-impl<'a> Name<'a> {
-    /// Converts this borrowed name to an owned [`NameOwned`].
-    ///
-    /// This allocates memory to store all the labels.
-    pub fn into_owned(self) -> NameOwned {
-        let labels = self
+impl<'a> From<Name<'a>> for NameOwned {
+    fn from(name: Name<'a>) -> Self {
+        let labels = name
             .labels()
             .filter_map(|r| r.ok())
             .map(|l| l.to_vec())
             .collect();
         NameOwned { labels }
-    }
-}
-
-impl<'a> From<Name<'a>> for NameOwned {
-    fn from(name: Name<'a>) -> Self {
-        name.into_owned()
     }
 }
 
@@ -410,17 +357,6 @@ impl<'a> Iterator for LabelIter<'a> {
 /// Domain names in DNS are represented as a sequence of labels, where each label
 /// is a length-prefixed string. This owned variant stores labels in allocated vectors,
 /// suitable for long-term storage or modification.
-///
-/// # Example
-///
-/// ```ignore
-/// // Parse and convert to owned
-/// let (name, _) = Name::parse(&packet, 0)?;
-/// let owned: NameOwned = name.into_owned();
-///
-/// // Or parse directly to owned
-/// let (owned, _) = NameOwned::parse(&packet, 0)?;
-/// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct NameOwned {
     /// The labels that make up this domain name.
@@ -790,10 +726,6 @@ mod tests {
         assert_eq!(name.encoded_len(), 1);
     }
 
-    // =========================================================================
-    // NameOwned tests
-    // =========================================================================
-
     #[test]
     fn test_name_owned_parse() {
         let data = [0x03, b'c', b'o', b'm', 0x00];
@@ -838,10 +770,6 @@ mod tests {
         // "example.com." = 1+7 + 1+3 + 1 = 13
         assert_eq!(name.encoded_len(), 13);
     }
-
-    // =========================================================================
-    // Compression pointer following tests
-    // =========================================================================
 
     #[test]
     fn test_compression_pointer_valid() {

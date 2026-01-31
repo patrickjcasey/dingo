@@ -1,21 +1,11 @@
-//! DNS question section parsing.
-//!
-//! This module handles parsing of the question section of DNS messages as
-//! specified in RFC 1035 Section 4.1.2.
-//!
-//! # Type Variants
-//!
-//! - [`Question`] - Zero-copy borrowed type that references packet data
-//! - [`QuestionOwned`] - Owned type that stores the name in an allocated vector
-
-use crate::name::{Name, NameOwned};
 use crate::ParseError;
+use crate::name::{Name, NameOwned};
 
 /// A zero-copy DNS question entry.
 ///
 /// The question section contains the domain name being queried, the query type,
 /// and the query class. This borrowed variant references the original packet data.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub struct Question<'a> {
     /// The domain name being queried (zero-copy reference to packet).
     pub name: Name<'a>,
@@ -42,33 +32,6 @@ impl<'a> Question<'a> {
     /// Parse a question from the packet data starting at the given offset.
     ///
     /// Returns the parsed question and the offset immediately after the question.
-    ///
-    /// # Arguments
-    ///
-    /// * `packet` - The complete DNS packet data (needed for name decompression)
-    /// * `offset` - The offset within `packet` where the question starts
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if:
-    /// - The buffer is too short
-    /// - The domain name is invalid (see [`Name::parse`])
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// // Question section for "example.com" A IN
-    /// let data = [
-    ///     0x07, b'e', b'x', b'a', b'm', b'p', b'l', b'e',
-    ///     0x03, b'c', b'o', b'm',
-    ///     0x00,       // end of name
-    ///     0x00, 0x01, // QTYPE = A
-    ///     0x00, 0x01, // QCLASS = IN
-    /// ];
-    /// let (question, next_offset) = Question::parse(&data, 0)?;
-    /// assert_eq!(question.qtype, 1);
-    /// assert_eq!(question.qclass, 1);
-    /// ```
     pub fn parse(packet: &'a [u8], offset: usize) -> Result<(Self, usize), ParseError> {
         // 1. Parse the domain name using Name::parse
         let (name, pos) = Name::parse(packet, offset)?;
@@ -107,20 +70,18 @@ impl<'a> Question<'a> {
     }
 
     /// Converts this borrowed question to an owned [`QuestionOwned`].
-    ///
-    /// This allocates memory to store the domain name.
     pub fn into_owned(self) -> QuestionOwned {
-        QuestionOwned {
-            name: self.name.into_owned(),
-            qtype: self.qtype,
-            qclass: self.qclass,
-        }
+        self.into()
     }
 }
 
 impl<'a> From<Question<'a>> for QuestionOwned {
     fn from(q: Question<'a>) -> Self {
-        q.into_owned()
+        QuestionOwned {
+            name: q.name.into_owned(),
+            qtype: q.qtype,
+            qclass: q.qclass,
+        }
     }
 }
 
@@ -156,20 +117,9 @@ impl QuestionOwned {
     ///
     /// Returns the parsed question and the offset immediately after the question.
     /// This immediately converts to owned, allocating memory for the name.
-    ///
-    /// # Arguments
-    ///
-    /// * `packet` - The complete DNS packet data (needed for name decompression)
-    /// * `offset` - The offset within `packet` where the question starts
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if:
-    /// - The buffer is too short
-    /// - The domain name is invalid (see [`Name::parse`])
     pub fn parse(packet: &[u8], offset: usize) -> Result<(Self, usize), ParseError> {
         let (question, end) = Question::parse(packet, offset)?;
-        Ok((question.into_owned(), end))
+        Ok((question.into(), end))
     }
 
     /// Returns true if this is a query for any record type (QTYPE=255).
@@ -188,10 +138,6 @@ impl QuestionOwned {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // =========================================================================
-    // Basic Question Parsing Tests
-    // =========================================================================
 
     #[test]
     fn test_parse_a_record_question() {
@@ -305,10 +251,6 @@ mod tests {
         assert_eq!(end_offset, data.len());
     }
 
-    // =========================================================================
-    // Question Parsing at Non-Zero Offset
-    // =========================================================================
-
     #[test]
     fn test_parse_question_at_offset() {
         // Question section typically starts at offset 12 (after header)
@@ -328,10 +270,6 @@ mod tests {
         assert_eq!(question.name.to_string(), "www.");
         assert_eq!(end_offset, data.len()); // 12 (header) + 5 (name) + 4 (qtype+qclass) = 21
     }
-
-    // =========================================================================
-    // Compression Pointer Tests
-    // =========================================================================
 
     #[test]
     fn test_parse_question_with_compression_pointer() {
@@ -377,10 +315,6 @@ mod tests {
         assert_eq!(question.name.to_string(), "www.example.com.");
         assert_eq!(end_offset, data.len()); // 13 + 4 (www) + 2 (pointer) + 4 (qtype+qclass) = 23
     }
-
-    // =========================================================================
-    // Error Cases
-    // =========================================================================
 
     #[test]
     fn test_parse_truncated_before_qtype() {
@@ -451,10 +385,6 @@ mod tests {
             "Expected CompressionPointerLoop to propagate, got {result:?}"
         );
     }
-
-    // =========================================================================
-    // Various QTYPE Values
-    // =========================================================================
 
     #[test]
     fn test_parse_txt_question() {
@@ -531,10 +461,6 @@ mod tests {
         assert_eq!(end_offset, data.len());
     }
 
-    // =========================================================================
-    // QCLASS Values
-    // =========================================================================
-
     #[test]
     fn test_parse_chaos_class_question() {
         // CH (Chaos) class is used for version.bind queries
@@ -552,10 +478,6 @@ mod tests {
         assert_eq!(end_offset, data.len());
     }
 
-    // =========================================================================
-    // Owned type tests
-    // =========================================================================
-
     #[test]
     fn test_question_into_owned() {
         #[rustfmt::skip]
@@ -568,7 +490,7 @@ mod tests {
         ];
 
         let (question, _) = Question::parse(&data, 0).unwrap();
-        let owned: QuestionOwned = question.into_owned();
+        let owned: QuestionOwned = question.into();
 
         assert_eq!(owned.name.to_string(), "example.com.");
         assert_eq!(owned.qtype, 1);
