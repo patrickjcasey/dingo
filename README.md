@@ -1,3 +1,5 @@
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 # Dingo
 
 An high-performance DNS toolkit for Rust, focused on speed and ease of use.
