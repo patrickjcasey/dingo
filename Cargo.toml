@@ -4,11 +4,11 @@ members = ["crates/*"]
 
 [workspace.package]
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 authors = ["Patrick Casey <patrick.casey1@outlook.com>"]
 license = "MIT"
 repository = "https://github.com/patrickjcasey/dingo"
-rust-version = "1.79"
+rust-version = "1.85.1"
 
 [workspace.dependencies]
 dingo-proto = { path = "crates/dingo-proto" }
