@@ -22,6 +22,9 @@ jobs:
   build:
     needs: fmt
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust: [stable, 1.85.1]
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
@@ -40,7 +43,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.rust }}
-      - run: cargo build --all-targets
+      - run: cargo test --workspace
 
   clippy:  
     needs: fmt
@@ -68,5 +71,5 @@ jobs:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@nightly
       - run: cargo install cargo-fuzz
-      - run: cargo fuzz run parse_message -- -max_total_time=30
+      - run: cargo +nightly fuzz run parse_message -- -max_total_time=30
         working-directory: fuzz
