@@ -56,11 +56,13 @@ jobs:
   miri:
     needs: fmt
     runs-on: ubuntu-latest
+    env:
+      RUSTUP_TOOLCHAIN: nightly
     steps:
       - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@miri
+      - uses: dtolnay/rust-toolchain@nightly
         with:
-          toolchain: nightly-2025-05-16
+          components: miri
       - run: cargo miri setup
       - run: cargo miri test
 
