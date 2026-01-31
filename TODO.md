@@ -116,18 +116,19 @@ All tests in `crates/dingo-proto/tests/conformance.rs` pass.
 - [ ] `test_valid_response_multiple_records()` - Multiple record types (TODO: implement)
 - [ ] `test_valid_edns_opt_record()` - EDNS OPT record support (TODO: implement)
 
-### 7. Get fuzzing targets running
+### 7. Get fuzzing targets running ✅ MOSTLY COMPLETE
 
-The fuzz targets in `fuzz/fuzz_targets/` must compile and run.
+The fuzz targets in `fuzz/fuzz_targets/` compile and run in CI.
 
-- [ ] `parse_message` - Complete DNS message parsing
-- [ ] `parse_header` - Header parsing (already works)
-- [ ] `parse_question` - Question section parsing
-- [ ] `parse_rr` - Resource record parsing
-- [ ] `parse_name` - Domain name with compression pointers
+- [x] `parse_message` - Complete DNS message parsing
+- [x] `parse_header` - Header parsing
+- [x] `parse_question` - Question section parsing
+- [x] `parse_rr` - Resource record parsing
+- [x] `parse_name` - Domain name with compression pointers
 
 **Fuzzing tasks:**
-- [ ] Verify all fuzz targets compile
+- [x] Verify all fuzz targets compile
+- [x] CI runs each target for 30 seconds on every push/PR
 - [ ] Run each target with CZ-NIC corpus as seed
 - [ ] Run extended fuzzing sessions (hours/overnight)
 - [ ] Add any crash inputs to regression tests
@@ -214,27 +215,28 @@ Compare performance against other Rust DNS parsers.
 
 **API documentation:**
 - [x] All public items have doc comments
-- [ ] `cargo doc` builds without warnings
+- [x] `cargo doc` builds without warnings
 - [ ] Doctests compile and run
 
 ### 13. Final checklist before crates.io publish
 
 **Cargo.toml:**
 - [x] Description filled in
-- [ ] Version set to 0.1.0
-- [ ] License specified (MIT/Apache-2.0)
-- [ ] Repository URL set
-- [ ] Documentation URL set
+- [x] Version set to 0.1.0
+- [x] License specified (MIT)
+- [x] Repository URL set
+- [ ] Documentation URL set (docs.rs will auto-generate)
 - [x] Keywords added (dns, parser, no_std)
 - [x] Categories added
-- [ ] Exclude unnecessary files (testdata/, fuzz/)
+- [x] Exclude unnecessary files (package only includes 13 files per dry-run)
 
 **Quality:**
-- [ ] `cargo clippy` passes with no warnings
-- [ ] `cargo fmt --check` passes
+- [ ] `cargo clippy` passes with no warnings (3 warnings remain - see Task 19)
+- [x] `cargo fmt --check` passes
 - [x] All tests pass (`cargo test --all`) - 131 tests passing
-- [ ] No_std build works (`cargo build --no-default-features`)
-- [ ] MSRV documented and tested
+- [x] No_std build works (`cargo build --no-default-features`)
+- [x] MSRV documented in Cargo.toml (`rust-version = "1.79"`)
+- [ ] MSRV tested in CI (blocked by dev-dep issue - see Task 19)
 
 **Security:**
 - [x] No unsafe code
@@ -243,7 +245,7 @@ Compare performance against other Rust DNS parsers.
 - [ ] CHANGELOG.md documents security properties
 
 **Final:**
-- [ ] `cargo publish --dry-run` succeeds
+- [x] `cargo publish --dry-run` succeeds
 - [ ] Review public API one final time
 
 ---
@@ -264,10 +266,11 @@ Create examples demonstrating how to use `dingo-proto`.
 
 Document the Minimum Supported Rust Version policy.
 
-- [ ] Determine MSRV (test with older Rust versions)
+- [x] Determine MSRV: **1.79** (set in `Cargo.toml` via `rust-version`)
 - [ ] Add MSRV badge to README
 - [ ] Document MSRV policy (e.g., "supports last 3 stable releases")
-- [ ] Add CI job to test MSRV
+- [x] Add CI job to test MSRV (matrix includes 1.79)
+- [ ] Fix dev-dep compatibility issue with 1.79 (see Task 19)
 
 ### 16. Add DNS message construction API
 
@@ -309,15 +312,30 @@ let response = MessageBuilder::response_to(&query)
     .build()?;
 ```
 
-### 17 Setup CI
-[ ] configure `cargo test`
-[ ] configure `cargo miri`
-[ ] configure `cargo fmt --check`
-[ ] configure publishing when git tag applied to `main`
+### 17. Setup CI ✅ MOSTLY COMPLETE
 
-### 18 Setup CI
-[ ] rewrite git history, squash down to 1 commit
-[ ] swap email to `patrickcaseyoss@gmail.com` in git history and Cargo.toml
+CI is configured in `.github/workflows/ci.yml`:
+- [x] `cargo fmt --check` - runs first, blocks other jobs
+- [x] `cargo build` and `cargo test` - runs on stable and 1.79
+- [x] `cargo miri test` - runs on nightly
+- [x] Fuzz testing - runs each target for 30 seconds
+- [ ] Configure publishing when git tag applied to `main`
+
+### 18. Pre-publish cleanup
+- [ ] Rewrite git history, squash down to 1 commit
+- [ ] Swap email to `patrickcaseyoss@gmail.com` in git history and Cargo.toml
+
+### 19. Fix remaining issues
+
+**Clippy warnings (3 in `src/name.rs`):**
+- [ ] Line 130: loop variable `i` only used to index `visited` - use iterator instead
+- [ ] Line 242: unnecessary `if let` in `wire_len()` - use `filter_map` or `flatten`
+- [ ] Line 272: unnecessary `if let` in `Display` impl - use `filter_map` or `flatten`
+
+**Dependency compatibility:**
+- [ ] Dev dependency pulls in `time` crate that requires edition2024 (fails on Rust 1.79)
+- [ ] Pin `criterion` or other dev-deps to versions compatible with MSRV
+- [ ] Test CI actually works on 1.79
 
 ---
 
