@@ -10,7 +10,21 @@ env:
   RUSTFLAGS: -Dwarnings
 
 jobs:
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Check formatting
+        run: cargo fmt --all --check
+
   build:
+    needs: fmt
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -28,6 +42,7 @@ jobs:
         run: cargo test
 
   miri:
+    needs: fmt
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -44,6 +59,7 @@ jobs:
         run: cargo miri test
 
   fuzz:
+    needs: fmt
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
