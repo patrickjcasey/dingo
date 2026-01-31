@@ -1,6 +1,7 @@
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use domain::base::Message as DomainMessage;
 use hickory_proto::op::Message as HickoryMessage;
+use std::hint::black_box;
 
 /// Minimal DNS query packet for "example.com" A record (29 bytes)
 #[rustfmt::skip]
