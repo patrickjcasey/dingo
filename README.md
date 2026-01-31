@@ -1,16 +1,11 @@
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+# Dingo &emsp; [![License: MIT][license-badge]][license] [![Build Status][ci-badge]][ci]
 
-# Dingo
+[license-badge]: https://img.shields.io/badge/License-MIT-yellow.svg
+[license]: https://opensource.org/licenses/MIT
+[ci-badge]: https://img.shields.io/github/actions/workflow/status/patrickjcasey/dingo/ci.yml?branch=main
+[ci]: https://github.com/patrickjcasey/dingo/actions?query=branch%3Amain
 
-An high-performance DNS toolkit for Rust, focused on speed and ease of use.
-
-## Workspace Structure
-
-This is a Cargo workspace containing the following crates:
-
-| Crate                               | Description                           |
-| ----------------------------------- | ------------------------------------- |
-| [`dingo-proto`](crates/dingo-proto) | `no_std`-compatible DNS packet parser |
+**An high-performance DNS toolkit for Rust, focused on speed and ease of use.
 
 ## Features
 
@@ -20,6 +15,15 @@ This is a Cargo workspace containing the following crates:
 - Robust handling of malformed packets
 - Comprehensive test suite with real-world packet captures
 - Fuzz-tested to check for possible crashes
+
+## Crates
+
+This is a Cargo workspace containing the following crates:
+
+| Crate                               | Description                              |
+| ----------------------------------- | ---------------------------------------- |
+| [`dingo-proto`](crates/dingo-proto) | high-performance, safe DNS packet parser |
+
 
 ## Usage
 
