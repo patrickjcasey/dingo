@@ -1,7 +1,7 @@
 [package]
 name = "dingo-fuzz"
-version = "0.0.0"
-authors = ["Automatically generated"]
+version = "0.1.0"
+authors = ["Patrick Casey <patrick.casey1@outlook.com>"]
 publish = false
 edition = "2021"
 
@@ -9,7 +9,7 @@ edition = "2021"
 cargo-fuzz = true
 
 [dependencies]
-libfuzzer-sys = "0.4"
+libfuzzer-sys = "0.4.10"
 dingo-proto = { path = "../crates/dingo-proto" }
 
 # Prevent this from interfering with workspaces
@@ -22,34 +22,6 @@ debug = 1
 [[bin]]
 name = "parse_message"
 path = "fuzz_targets/parse_message.rs"
-test = false
-doc = false
-bench = false
-
-[[bin]]
-name = "parse_header"
-path = "fuzz_targets/parse_header.rs"
-test = false
-doc = false
-bench = false
-
-[[bin]]
-name = "parse_question"
-path = "fuzz_targets/parse_question.rs"
-test = false
-doc = false
-bench = false
-
-[[bin]]
-name = "parse_rr"
-path = "fuzz_targets/parse_rr.rs"
-test = false
-doc = false
-bench = false
-
-[[bin]]
-name = "parse_name"
-path = "fuzz_targets/parse_name.rs"
 test = false
 doc = false
 bench = false
