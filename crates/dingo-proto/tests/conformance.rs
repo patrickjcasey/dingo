@@ -500,7 +500,7 @@ fn test_valid_minimal_query() {
     assert_eq!(msg.id(), 0x1234);
     assert_eq!(msg.header.qdcount(), 1);
 
-    let questions: Vec<_> = msg.questions().collect::<Result<Vec<_>, _>>().unwrap();
+    let questions: Vec<_> = msg.questions().collect::<Vec<_>>();
     assert_eq!(questions.len(), 1);
     assert_eq!(questions[0].name.to_string(), "example.com.");
     assert_eq!(questions[0].qtype, 1); // A
@@ -539,7 +539,7 @@ fn test_valid_response_with_a_record() {
 
     let msg = result.unwrap();
     assert!(msg.is_response());
-    let answers: Vec<_> = msg.answers().collect::<Result<Vec<_>, _>>().unwrap();
+    let answers: Vec<_> = msg.answers().collect::<Vec<_>>();
     assert_eq!(answers.len(), 1);
 }
 
@@ -597,7 +597,7 @@ fn test_valid_response_multiple_records() {
     assert!(msg.is_response());
     assert_eq!(msg.header.ancount(), 3);
 
-    let answers: Vec<_> = msg.answers().collect::<Result<Vec<_>, _>>().unwrap();
+    let answers: Vec<_> = msg.answers().collect::<Vec<_>>();
     assert_eq!(answers.len(), 3);
 
     // Verify record types
@@ -646,7 +646,7 @@ fn test_valid_edns_opt_record() {
     let msg = result.unwrap();
     assert_eq!(msg.header.arcount(), 1);
 
-    let additionals: Vec<_> = msg.additionals().collect::<Result<Vec<_>, _>>().unwrap();
+    let additionals: Vec<_> = msg.additionals().collect::<Vec<_>>();
     assert_eq!(additionals.len(), 1);
 
     let opt = &additionals[0];
@@ -699,7 +699,7 @@ fn test_valid_edns_with_options() {
     );
 
     let msg = result.unwrap();
-    let additionals: Vec<_> = msg.additionals().collect::<Result<Vec<_>, _>>().unwrap();
+    let additionals: Vec<_> = msg.additionals().collect::<Vec<_>>();
     assert_eq!(additionals.len(), 1);
 
     let opt = &additionals[0];

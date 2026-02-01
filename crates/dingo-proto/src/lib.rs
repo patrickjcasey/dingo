@@ -101,10 +101,9 @@ impl Header {
 
     #[inline]
     pub fn parse(bytes: &[u8]) -> Result<(Self, &[u8]), ParseError> {
-        if bytes.len() < Self::SIZE {
-            return Err(ParseError::BufferTooShort);
-        }
-        let (header, remainder) = bytes.split_at(Self::SIZE);
+        let (header, remainder) = bytes
+            .split_at_checked(Self::SIZE)
+            .ok_or(ParseError::BufferTooShort)?;
         let header = <[u8; 12]>::try_from(header).unwrap();
 
         // Validate reserved Z bit (bit 9) is zero.
