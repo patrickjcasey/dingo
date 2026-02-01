@@ -2,7 +2,7 @@ use alloc::vec::Vec;
 
 use crate::question::{Question, QuestionOwned};
 use crate::rr::{ResourceRecord, ResourceRecordOwned};
-use crate::{Header, ParseError, QR};
+use crate::{Header, ParseError, QR, ResponseCode};
 
 /// A zero-copy DNS message with lazy parsing.
 ///
@@ -174,7 +174,6 @@ impl<'a> Message<'a> {
     /// Returns true if this response indicates an error.
     #[inline]
     pub fn is_error(&self) -> bool {
-        use crate::ResponseCode;
         !matches!(self.header.response_code(), ResponseCode::NoErrorCondition)
     }
 
@@ -200,7 +199,7 @@ impl<'a> Message<'a> {
 
     /// Returns the raw packet data.
     #[inline]
-    pub fn packet(&self) -> &'a [u8] {
+    pub fn as_bytes(&self) -> &'a [u8] {
         self.packet
     }
 }
@@ -301,20 +300,12 @@ impl ExactSizeIterator for ResourceRecordIter<'_> {}
 pub struct MessageOwned {
     /// The DNS header containing flags and section counts.
     pub header: Header,
-    /// The question section.
-    ///
     /// Typically contains one question, but the protocol allows multiple.
     pub questions: Vec<QuestionOwned>,
-    /// The answer section.
-    ///
     /// Contains resource records that answer the question(s).
     pub answers: Vec<ResourceRecordOwned>,
-    /// The authority section.
-    ///
     /// Contains resource records pointing to authoritative name servers.
     pub authorities: Vec<ResourceRecordOwned>,
-    /// The additional section.
-    ///
     /// Contains resource records with additional helpful information,
     /// such as A records for name servers listed in the authority section.
     pub additionals: Vec<ResourceRecordOwned>,

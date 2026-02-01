@@ -1,22 +1,3 @@
-//! DNS domain name parsing with compression pointer support.
-//!
-//! This module handles the parsing of DNS domain names as specified in RFC 1035
-//! Section 4.1.4, including support for message compression using pointers.
-//!
-//! # Type Variants
-//!
-//! - [`Name`] - Zero-copy borrowed type that references packet data
-//! - [`NameOwned`] - Owned type that stores labels in allocated vectors
-//!
-//! # Security
-//!
-//! Domain name parsing is security-critical. This implementation guards against:
-//! - Compression pointer loops (CVE-2018-20994, CVE-2017-14339)
-//! - Out-of-bounds compression pointers (NAME:WRECK)
-//! - Forward compression pointers
-//! - Label length overflow (max 63 octets)
-//! - Name length overflow (max 255 octets)
-
 use alloc::string::String;
 use alloc::vec::Vec;
 
@@ -60,7 +41,6 @@ impl<'a> Name<'a> {
     pub fn parse(packet: &'a [u8], offset: usize) -> Result<(Self, usize), ParseError> {
         // Validate the name structure and find the end position
         let end = Self::validate_and_find_end(packet, offset)?;
-
         let name = Self {
             packet,
             start: offset,
@@ -78,7 +58,6 @@ impl<'a> Name<'a> {
         let mut end_pos: Option<usize> = None;
         let mut total_len: usize = 0;
 
-        // Use a fixed-size array for visited positions to avoid allocation
         // We only need to track positions we've visited to detect loops
         let mut visited = [0u16; MAX_POINTER_CHAIN];
         let mut visited_count = 0;
@@ -87,15 +66,13 @@ impl<'a> Name<'a> {
             // Check for loops
             let pos_u16 = pos as u16;
 
-            for visited in &visited[..visited_count] {
-                if *visited == pos_u16 {
-                    return Err(ParseError::CompressionPointerLoop);
-                }
+            if visited[..visited_count].contains(&pos_u16) {
+                return Err(ParseError::CompressionPointerLoop);
             }
-
             if visited_count >= MAX_POINTER_CHAIN {
                 return Err(ParseError::CompressionPointerLoop);
             }
+
             visited[visited_count] = pos_u16;
             visited_count += 1;
 

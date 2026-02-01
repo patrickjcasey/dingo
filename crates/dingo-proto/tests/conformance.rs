@@ -1,8 +1,3 @@
-//! Conformance tests using real packet captures.
-//!
-//! These tests verify that the parser correctly handles real-world DNS packets
-//! from various sources including Wireshark captures and the CZ-NIC fuzzing corpus.
-
 use dingo_proto::{Header, Message, ParseError};
 use pcap_parser::traits::PcapReaderIterator;
 use pcap_parser::{LegacyPcapReader, PcapBlockOwned, PcapError};

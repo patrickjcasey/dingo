@@ -33,22 +33,18 @@ impl<'a> Question<'a> {
     ///
     /// Returns the parsed question and the offset immediately after the question.
     pub fn parse(packet: &'a [u8], offset: usize) -> Result<(Self, usize), ParseError> {
-        // 1. Parse the domain name using Name::parse
         let (name, pos) = Name::parse(packet, offset)?;
 
-        // 2. Read QTYPE (2 bytes, big-endian) at the offset after the name
         if pos + 2 > packet.len() {
             return Err(ParseError::BufferTooShort);
         }
         let qtype = u16::from_be_bytes([packet[pos], packet[pos + 1]]);
 
-        // 3. Read QCLASS (2 bytes, big-endian) after QTYPE
         if pos + 4 > packet.len() {
             return Err(ParseError::BufferTooShort);
         }
         let qclass = u16::from_be_bytes([packet[pos + 2], packet[pos + 3]]);
 
-        // 4. Return the Question and the offset after QCLASS
         let question = Self {
             name,
             qtype,

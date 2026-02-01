@@ -79,7 +79,7 @@ pub enum ResponseCode {
     /// - 8 = NXRRSet (RR set does not exist when it should)
     /// - 9 = NotAuth (server not authoritative / not authorized)
     /// - 10 = NotZone (name not in zone)
-    Reserved,
+    Reserved = 11,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

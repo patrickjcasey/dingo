@@ -162,11 +162,9 @@ fn bench_minimal_query(c: &mut Criterion) {
     group.bench_function(BenchmarkId::new("parse", "dingo"), |b| {
         b.iter(|| dingo_proto::Message::parse(black_box(MINIMAL_QUERY)))
     });
-
     group.bench_function(BenchmarkId::new("parse", "hickory"), |b| {
         b.iter(|| HickoryMessage::from_vec(black_box(MINIMAL_QUERY)))
     });
-
     group.bench_function(BenchmarkId::new("parse", "domain"), |b| {
         b.iter(|| {
             let msg = DomainMessage::from_slice(black_box(MINIMAL_QUERY)).unwrap();
@@ -187,11 +185,9 @@ fn bench_response_with_answer(c: &mut Criterion) {
     group.bench_function(BenchmarkId::new("parse", "dingo"), |b| {
         b.iter(|| dingo_proto::Message::parse(black_box(RESPONSE_WITH_ANSWER)))
     });
-
     group.bench_function(BenchmarkId::new("parse", "hickory"), |b| {
         b.iter(|| HickoryMessage::from_vec(black_box(RESPONSE_WITH_ANSWER)))
     });
-
     group.bench_function(BenchmarkId::new("parse", "domain"), |b| {
         b.iter(|| {
             let msg = DomainMessage::from_slice(black_box(RESPONSE_WITH_ANSWER)).unwrap();
@@ -214,11 +210,9 @@ fn bench_response_multiple_answers(c: &mut Criterion) {
     group.bench_function(BenchmarkId::new("parse", "dingo"), |b| {
         b.iter(|| dingo_proto::Message::parse(black_box(RESPONSE_MULTIPLE_ANSWERS)))
     });
-
     group.bench_function(BenchmarkId::new("parse", "hickory"), |b| {
         b.iter(|| HickoryMessage::from_vec(black_box(RESPONSE_MULTIPLE_ANSWERS)))
     });
-
     group.bench_function(BenchmarkId::new("parse", "domain"), |b| {
         b.iter(|| {
             let msg = DomainMessage::from_slice(black_box(RESPONSE_MULTIPLE_ANSWERS)).unwrap();
@@ -241,11 +235,9 @@ fn bench_heavy_compression(c: &mut Criterion) {
     group.bench_function(BenchmarkId::new("parse", "dingo"), |b| {
         b.iter(|| dingo_proto::Message::parse(black_box(RESPONSE_HEAVY_COMPRESSION)))
     });
-
     group.bench_function(BenchmarkId::new("parse", "hickory"), |b| {
         b.iter(|| HickoryMessage::from_vec(black_box(RESPONSE_HEAVY_COMPRESSION)))
     });
-
     group.bench_function(BenchmarkId::new("parse", "domain"), |b| {
         b.iter(|| {
             let msg = DomainMessage::from_slice(black_box(RESPONSE_HEAVY_COMPRESSION)).unwrap();

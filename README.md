@@ -158,9 +158,19 @@ This downloads from the [Wireshark Wiki SampleCaptures](https://wiki.wireshark.o
 - `zlip-2.pcap` - Cross-referencing pointer decompression flaw
 - `zlip-3.pcap` - Domain length explosion via decompression
   
-## Relevant RFC
+## Relevant RFCs
 - [RFC 1035](https://datatracker.ietf.org/doc/html/rfc1035) - Domain Names - Implementation and Specification
 - [RFC 9267](https://datatracker.ietf.org/doc/html/rfc9267) - Common Implementation Anti-Patterns
+
+## Acknowledgments
+
+This project uses external test data for validation and fuzzing:
+
+- **[Wireshark](https://www.wireshark.org/)** test captures (GPLv2) - Used via git submodule for conformance testing
+- **[CZ-NIC dns-fuzzing](https://github.com/CZ-NIC/dns-fuzzing)** corpus - AFL fuzzing seeds originally developed for Knot DNS
+- **[Wireshark Wiki SampleCaptures](https://wiki.wireshark.org/SampleCaptures)** - Community-contributed packet captures for DNS edge cases
+
+These are used solely for testing purposes and are not distributed as part of the dingo crates.
 
 ## Notes on LLMs
 

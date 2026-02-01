@@ -65,7 +65,6 @@ impl<'a> ResourceRecord<'a> {
     ///
     /// Returns the parsed record and the offset immediately after the record.
     pub fn parse(packet: &'a [u8], offset: usize) -> Result<(Self, usize), ParseError> {
-        // 1. Parse the domain name using Name::parse
         let (name, mut pos) = Name::parse(packet, offset)?;
 
         if pos + Self::RTYPE_LEN > packet.len() {
@@ -181,7 +180,7 @@ impl<'a> ResourceRecord<'a> {
     ///
     /// This is useful for parsing names within RDATA (e.g., CNAME, MX).
     #[inline]
-    pub fn packet(&self) -> &'a [u8] {
+    pub fn as_bytes(&self) -> &'a [u8] {
         self.packet
     }
 
