@@ -20,7 +20,6 @@ jobs:
       - run: cargo fmt --all --check
 
   build:
-    needs: fmt
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -33,7 +32,6 @@ jobs:
       - run: cargo build --all-targets
 
   test:
-    needs: fmt
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -46,7 +44,6 @@ jobs:
       - run: cargo test --workspace
 
   clippy:  
-    needs: fmt
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -54,7 +51,6 @@ jobs:
       - run: cargo clippy --workspace
 
   fuzz:
-    needs: fmt
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
