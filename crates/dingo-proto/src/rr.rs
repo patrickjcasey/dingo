@@ -348,7 +348,7 @@ mod tests {
         assert_eq!(rr.rdlength, 4);
         assert_eq!(rr.rdata, [192, 168, 1, 1]);
         assert!(rr.is_a());
-        assert_eq!(rr.as_ipv4().map(|ip| ip.octets()), Some([192, 168, 1, 1]));
+        assert_eq!(rr.as_ipv4(), Some(Ipv4Addr::new(192, 168, 1, 1)));
         assert_eq!(end_offset, data.len()); // 5 (name) + 10 (fixed fields) + 4 (rdata) = 19
     }
 
@@ -367,7 +367,7 @@ mod tests {
 
         let (rr, end_offset) = ResourceRecord::parse(&data, 0).unwrap();
 
-        assert_eq!(rr.as_ipv4().map(|ip| ip.octets()), Some([0, 0, 0, 0]));
+        assert_eq!(rr.as_ipv4(), Some(Ipv4Addr::new(0, 0, 0, 0)));
         assert_eq!(end_offset, data.len());
     }
 

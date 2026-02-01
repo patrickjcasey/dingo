@@ -368,6 +368,8 @@ impl MessageOwned {
 
 #[cfg(test)]
 mod tests {
+    use core::net::Ipv4Addr;
+
     use super::*;
     use alloc::string::ToString;
 
@@ -506,7 +508,7 @@ mod tests {
         assert_eq!(answers[0].name.to_string(), "example.com.");
         assert!(answers[0].is_a());
         assert_eq!(answers[0].ttl, 60);
-        assert_eq!(answers[0].as_ipv4().map(|ip| ip.octets()), Some([93, 184, 216, 34]));
+        assert_eq!(answers[0].as_ipv4(), Some(Ipv4Addr::new(93, 184, 216, 34)));
     }
 
     #[test]
@@ -541,8 +543,8 @@ mod tests {
 
         let answers: Vec<_> = msg.answers().collect();
         assert_eq!(answers.len(), 2);
-        assert_eq!(answers[0].as_ipv4().map(|ip| ip.octets()), Some([1, 1, 1, 1]));
-        assert_eq!(answers[1].as_ipv4().map(|ip| ip.octets()), Some([8, 8, 8, 8]));
+        assert_eq!(answers[0].as_ipv4(), Some(Ipv4Addr::new(1, 1, 1, 1)));
+        assert_eq!(answers[1].as_ipv4(), Some(Ipv4Addr::new(8, 8, 8, 8)));
     }
 
     #[test]
