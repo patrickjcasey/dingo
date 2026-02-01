@@ -1,3 +1,7 @@
+use core::net::{Ipv4Addr, Ipv6Addr};
+
+#[allow(unused, reason = "make supporting no_std easier")]
+use alloc::string::ToString;
 use alloc::vec::Vec;
 
 use crate::ParseError;
@@ -156,9 +160,14 @@ impl<'a> ResourceRecord<'a> {
     ///
     /// Returns `None` if this is not an A record or RDATA is malformed.
     #[inline]
-    pub fn as_ipv4(&self) -> Option<[u8; 4]> {
+    pub fn as_ipv4(&self) -> Option<Ipv4Addr> {
         if self.rtype == 1 && self.rdata.len() == 4 {
-            Some([self.rdata[0], self.rdata[1], self.rdata[2], self.rdata[3]])
+            Some(Ipv4Addr::new(
+                self.rdata[0],
+                self.rdata[1],
+                self.rdata[2],
+                self.rdata[3],
+            ))
         } else {
             None
         }
@@ -168,9 +177,17 @@ impl<'a> ResourceRecord<'a> {
     ///
     /// Returns `None` if this is not an AAAA record or RDATA is malformed.
     #[inline]
-    pub fn as_ipv6(&self) -> Option<[u8; 16]> {
+    pub fn as_ipv6(&self) -> Option<Ipv6Addr> {
         if self.rtype == 28 && self.rdata.len() == 16 {
-            self.rdata.try_into().ok()
+            let a = u16::from_be_bytes([self.rdata[0], self.rdata[1]]);
+            let b = u16::from_be_bytes([self.rdata[2], self.rdata[3]]);
+            let c = u16::from_be_bytes([self.rdata[4], self.rdata[5]]);
+            let d = u16::from_be_bytes([self.rdata[6], self.rdata[7]]);
+            let e = u16::from_be_bytes([self.rdata[8], self.rdata[9]]);
+            let f = u16::from_be_bytes([self.rdata[10], self.rdata[11]]);
+            let g = u16::from_be_bytes([self.rdata[12], self.rdata[13]]);
+            let h = u16::from_be_bytes([self.rdata[14], self.rdata[15]]);
+            Some(Ipv6Addr::new(a, b, c, d, e, f, g, h))
         } else {
             None
         }
@@ -331,7 +348,7 @@ mod tests {
         assert_eq!(rr.rdlength, 4);
         assert_eq!(rr.rdata, [192, 168, 1, 1]);
         assert!(rr.is_a());
-        assert_eq!(rr.as_ipv4(), Some([192, 168, 1, 1]));
+        assert_eq!(rr.as_ipv4().map(|ip| ip.octets()), Some([192, 168, 1, 1]));
         assert_eq!(end_offset, data.len()); // 5 (name) + 10 (fixed fields) + 4 (rdata) = 19
     }
 
@@ -350,7 +367,7 @@ mod tests {
 
         let (rr, end_offset) = ResourceRecord::parse(&data, 0).unwrap();
 
-        assert_eq!(rr.as_ipv4(), Some([0, 0, 0, 0]));
+        assert_eq!(rr.as_ipv4().map(|ip| ip.octets()), Some([0, 0, 0, 0]));
         assert_eq!(end_offset, data.len());
     }
 
@@ -413,7 +430,7 @@ mod tests {
 
         let (rr, end_offset) = ResourceRecord::parse(&data, 0).unwrap();
 
-        let ipv6 = rr.as_ipv6().unwrap();
+        let ipv6 = rr.as_ipv6().unwrap().octets();
         assert_eq!(ipv6[15], 1);
         assert_eq!(&ipv6[0..15], &[0u8; 15]);
         assert_eq!(end_offset, data.len());

@@ -1,7 +1,7 @@
 [package]
 name = "dingo-proto"
 description = "A high-performance DNS packet parser focused on speed and safety"
-version.workspace = true
+version = "0.1.0"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -24,7 +24,5 @@ name = "parsing"
 harness = false
 
 [features]
-default = ["std"]
-
 # adds std::error::Error to ParseError
 std = []

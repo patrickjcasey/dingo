@@ -369,6 +369,7 @@ impl MessageOwned {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::string::ToString;
 
     #[test]
     fn test_parse_minimal_query() {
@@ -399,7 +400,7 @@ mod tests {
         assert!(!msg.truncated());
 
         // Test lazy iteration
-        let questions: Vec<_> = msg.questions().collect();
+        let questions: Vec<Question<'_>> = msg.questions().collect();
         assert_eq!(questions.len(), 1);
         assert_eq!(questions[0].name.to_string(), "example.com.");
         assert_eq!(questions[0].qtype, 1); // A
@@ -431,7 +432,7 @@ mod tests {
 
         let msg = Message::parse(&packet).unwrap();
 
-        let questions: Vec<_> = msg.questions().collect();
+        let questions: Vec<Question<'_>> = msg.questions().collect();
         assert_eq!(questions.len(), 2);
         assert_eq!(questions[0].name.to_string(), "a.com.");
         assert_eq!(questions[0].qtype, 1); // A
@@ -487,7 +488,7 @@ mod tests {
             0x00, 0x01,             // CLASS = IN
             0x00, 0x00, 0x00, 0x3C, // TTL = 60
             0x00, 0x04,             // RDLENGTH = 4
-            0x5D, 0xB8, 0xD8, 0x22, // RDATA = 93.184.216.34
+            93, 184, 216, 34, // RDATA = 93.184.216.34
         ];
 
         let msg = Message::parse(&packet).unwrap();
@@ -505,7 +506,7 @@ mod tests {
         assert_eq!(answers[0].name.to_string(), "example.com.");
         assert!(answers[0].is_a());
         assert_eq!(answers[0].ttl, 60);
-        assert_eq!(answers[0].as_ipv4(), Some([93, 184, 216, 34]));
+        assert_eq!(answers[0].as_ipv4().map(|ip| ip.octets()), Some([93, 184, 216, 34]));
     }
 
     #[test]
@@ -540,8 +541,8 @@ mod tests {
 
         let answers: Vec<_> = msg.answers().collect();
         assert_eq!(answers.len(), 2);
-        assert_eq!(answers[0].as_ipv4(), Some([1, 1, 1, 1]));
-        assert_eq!(answers[1].as_ipv4(), Some([8, 8, 8, 8]));
+        assert_eq!(answers[0].as_ipv4().map(|ip| ip.octets()), Some([1, 1, 1, 1]));
+        assert_eq!(answers[1].as_ipv4().map(|ip| ip.octets()), Some([8, 8, 8, 8]));
     }
 
     #[test]

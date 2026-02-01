@@ -1,5 +1,7 @@
 use crate::ParseError;
 use crate::name::{Name, NameOwned};
+#[allow(unused, reason = "make supporting no_std easier")]
+use alloc::string::ToString;
 
 /// A zero-copy DNS question entry.
 ///
@@ -134,6 +136,7 @@ impl QuestionOwned {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::string::ToString;
 
     #[test]
     fn test_parse_a_record_question() {

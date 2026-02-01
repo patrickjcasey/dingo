@@ -1,4 +1,8 @@
 use alloc::string::String;
+#[allow(unused, reason = "make supporting no_std easier")]
+use alloc::string::ToString;
+#[allow(unused, reason = "make supporting no_std easier")]
+use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::ParseError;
@@ -37,7 +41,6 @@ impl<'a> Name<'a> {
     /// This method only validates that the name structure is valid; it does not
     /// decompress the name. Use [`labels()`](Self::labels) to iterate over the
     /// decompressed labels.
-    /// ```
     pub fn parse(packet: &'a [u8], offset: usize) -> Result<(Self, usize), ParseError> {
         // Validate the name structure and find the end position
         let end = Self::validate_and_find_end(packet, offset)?;
@@ -402,6 +405,8 @@ impl core::fmt::Display for NameOwned {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::string::ToString;
+    use alloc::vec;
 
     #[test]
     fn test_parse_simple_single_label() {
@@ -535,7 +540,7 @@ mod tests {
     fn test_label_max_valid_length() {
         // 63 bytes is the maximum valid label length
         let mut data = vec![63]; // length byte
-        data.extend(std::iter::repeat_n(b'a', 63)); // 63 'a's
+        data.extend([b'a'; 63]); // 63 'a's
         data.push(0x00); // null terminator
 
         let (name, _) = Name::parse(&data, 0).unwrap();
@@ -546,7 +551,7 @@ mod tests {
     fn test_label_length_overflow() {
         // 64 bytes exceeds the maximum (uses bits that could be pointer flags)
         let mut data = vec![64]; // length byte = 64 (invalid)
-        data.extend(std::iter::repeat_n(b'a', 64));
+        data.extend([b'a'; 64]);
         data.push(0x00);
 
         let result = Name::parse(&data, 0);
@@ -577,11 +582,11 @@ mod tests {
         // Three 63-byte labels
         for _ in 0..3 {
             data.push(63);
-            data.extend(std::iter::repeat_n(b'a', 63));
+            data.extend(core::iter::repeat_n(b'a', 63));
         }
         // One 61-byte label (to reach exactly 255)
         data.push(61);
-        data.extend(std::iter::repeat_n(b'a', 61));
+        data.extend(core::iter::repeat_n(b'a', 61));
         // Null terminator
         data.push(0x00);
 
@@ -597,7 +602,7 @@ mod tests {
         // Four 63-byte labels = 4 * (1 + 63) + 1 = 257 bytes
         for _ in 0..4 {
             data.push(63);
-            data.extend(std::iter::repeat_n(b'a', 63));
+            data.extend(core::iter::repeat_n(b'a', 63));
         }
         data.push(0x00);
 
@@ -661,14 +666,6 @@ mod tests {
 
         // DNS names should have trailing dot to indicate FQDN
         assert!(name.to_string().ends_with('.'));
-    }
-
-    #[test]
-    fn test_display_matches_to_string() {
-        let data = [0x03, b'c', b'o', b'm', 0x00];
-        let (name, _) = Name::parse(&data, 0).unwrap();
-
-        assert_eq!(format!("{name}"), name.to_string());
     }
 
     #[test]

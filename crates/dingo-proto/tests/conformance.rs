@@ -2,6 +2,7 @@ use dingo_proto::{Header, Message, ParseError};
 use pcap_parser::traits::PcapReaderIterator;
 use pcap_parser::{LegacyPcapReader, PcapBlockOwned, PcapError};
 use std::fs::File;
+use std::net::{Ipv4Addr, Ipv6Addr};
 use std::path::{Path, PathBuf};
 
 /// Get the workspace root directory.
@@ -601,10 +602,16 @@ fn test_valid_response_multiple_records() {
     assert_eq!(answers[2].rtype, 28); // AAAA
 
     // Verify A record data
-    assert_eq!(answers[1].as_ipv4(), Some([93, 184, 216, 34]));
+    assert_eq!(answers[1].as_ipv4(), Some(Ipv4Addr::new(93, 184, 216, 34)));
 
     // Verify AAAA record data
-    assert!(answers[2].as_ipv6().is_some());
+    assert_eq!(
+        answers[2].as_ipv6(),
+        Some(Ipv6Addr::from_bits(u128::from_be_bytes([
+            0x26, 0x06, 0x28, 0x00, 0x02, 0x20, 0x00, 0x01, 0x02, 0x48, 0x18, 0x93, 0x25, 0xc8,
+            0x19, 0x46,
+        ])))
+    );
 }
 
 /// Test parsing EDNS (OPT) record in additional section
