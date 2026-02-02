@@ -1,0 +1,6 @@
+[submodule "testdata/dns-fuzzing"]
+	path = testdata/dns-fuzzing
+	url = https://github.com/CZ-NIC/dns-fuzzing.git
+[submodule "testdata/wireshark"]
+	path = testdata/wireshark
+	url = https://gitlab.com/wireshark/wireshark.git
