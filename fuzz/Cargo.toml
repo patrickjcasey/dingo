@@ -1,0 +1,25 @@
+[package]
+name = "dingo-fuzz"
+version = "0.1.0"
+authors = ["Patrick Casey <patrick.casey1@outlook.com>"]
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4.10"
+dingo-proto = { path = "../crates/dingo-proto" }
+
+[workspace]
+
+[profile.release]
+debug = 1
+
+[[bin]]
+name = "parse_message"
+path = "fuzz_targets/parse_message.rs"
+test = false
+doc = false
+bench = false
