@@ -1,8 +1,6 @@
 #![no_std]
 #![no_main]
 
-extern crate core;
-
 use core::alloc::GlobalAlloc;
 use dingo_proto::Message;
 
@@ -21,9 +19,8 @@ unsafe impl GlobalAlloc for Allocator {
 }
 
 #[global_allocator]
-static ALLOCATOR: Allocator = Allocator;
+static GLOBAL_ALLOCATOR: Allocator = Allocator;
 
-#[cfg(not(test))]
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {
     unsafe {

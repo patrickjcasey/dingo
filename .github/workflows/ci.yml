@@ -30,7 +30,13 @@ jobs:
         with:
           toolchain: ${{ matrix.rust }}
       - run: cargo build --workspace
-      - run: cd examples/no_std && cargo build
+
+  build-no-std-example:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@nightly
+      - run: cd examples/no_std && cargo +nightly -Zbuild-std build
 
   test:
     runs-on: ubuntu-latest
@@ -44,7 +50,7 @@ jobs:
           toolchain: ${{ matrix.rust }}
       - run: cargo test --workspace
 
-  clippy:  
+  clippy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6

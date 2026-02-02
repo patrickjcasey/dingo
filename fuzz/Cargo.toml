@@ -12,9 +12,7 @@ cargo-fuzz = true
 libfuzzer-sys = "0.4.10"
 dingo-proto = { path = "../crates/dingo-proto" }
 
-# Prevent this from interfering with workspaces
 [workspace]
-members = ["."]
 
 [profile.release]
 debug = 1
