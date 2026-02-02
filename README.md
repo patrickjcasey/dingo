@@ -103,6 +103,7 @@ cp testdata/dns-fuzzing/packet/*.pkt fuzz/corpus/parse_message/
 | Target          | Description                  |
 | --------------- | ---------------------------- |
 | `parse_message` | Complete DNS message parsing |
+
 ## Updating Test Data
 
 This project uses git submodules for external test data sources.
