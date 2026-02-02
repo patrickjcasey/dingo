@@ -27,13 +27,13 @@ Run the download script to fetch these files:
 
 These files are downloaded from the [Wireshark Wiki SampleCaptures](https://wiki.wireshark.org/SampleCaptures) page:
 
-| File | Description |
-|------|-------------|
-| `dns.cap` | Various DNS lookups |
-| `dns-remoteshell.pcap` | DNS anomaly caused by remoteshell on DNS port |
-| `zlip-1.pcap` | Endless self-referential pointer decompression flaw |
-| `zlip-2.pcap` | Endless cross-referencing decompression |
-| `zlip-3.pcap` | Very long domain through multiple decompression |
+| File                   | Description                                         |
+| ---------------------- | --------------------------------------------------- |
+| `dns.cap`              | Various DNS lookups                                 |
+| `dns-remoteshell.pcap` | DNS anomaly caused by remoteshell on DNS port       |
+| `zlip-1.pcap`          | Endless self-referential pointer decompression flaw |
+| `zlip-2.pcap`          | Endless cross-referencing decompression             |
+| `zlip-3.pcap`          | Very long domain through multiple decompression     |
 
 ## Updating Submodules
 
