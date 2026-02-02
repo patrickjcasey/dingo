@@ -36,7 +36,8 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@nightly
-      - run: cd examples/no_std && cargo +nightly -Zbuild-std build
+      - run: cargo +nightly -Zbuild-std build
+        working-directory: examples/no_std
 
   test:
     runs-on: ubuntu-latest
