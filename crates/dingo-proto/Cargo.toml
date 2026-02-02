@@ -1,12 +1,13 @@
 [package]
 name = "dingo-proto"
 description = "A high-performance DNS packet parser focused on speed and safety"
-version = "0.1.0"
+version = "0.1.1"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+readme.workspace = true
 keywords = ["dns", "parser", "network", "protocol", "no_std"]
 categories = ["network-programming", "parser-implementations", "no-std"]
 

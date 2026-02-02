@@ -8,6 +8,7 @@ authors = ["Patrick Casey <patrick.casey1@outlook.com>"]
 license = "MIT"
 repository = "https://github.com/patrickjcasey/dingo"
 rust-version = "1.85.1"
+readme = "README.md"
 
 [workspace.dependencies]
 # internal
