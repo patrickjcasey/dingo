@@ -14,7 +14,7 @@ rust-version = "1.85.1"
 dingo-proto = { path = "crates/dingo-proto" }
 
 # external
-criterion = "0.7.0"
+criterion = "0.8.1"
 domain = "0.11.1"
 hex = "0.4.3"
 hickory-proto = "0.25.2"
