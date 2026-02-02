@@ -1,0 +1,20 @@
+[package]
+name = "no_std"
+description = "test binary to ensure no_std support is working"
+version = "0.0.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+dingo-proto = { workspace = true }
+libc = { version = "0.2", default-features = false }
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
