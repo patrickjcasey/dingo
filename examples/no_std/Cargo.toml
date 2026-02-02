@@ -1,16 +1,16 @@
 [package]
-name = "no_std"
+name = "no_std_example"
 description = "test binary to ensure no_std support is working"
 version = "0.0.0"
-edition.workspace = true
-authors.workspace = true
-license.workspace = true
-repository.workspace = true
-rust-version.workspace = true
+edition = "2024"
+authors = ["Patrick Casey <patrick.casey1@outlook.com>"]
+license = "MIT"
+repository = "https://github.com/patrickjcasey/dingo"
+rust-version = "1.85.1"
 publish = false
 
 [dependencies]
-dingo-proto = { workspace = true }
+dingo-proto = { path = "../../crates/dingo-proto" }
 libc = { version = "0.2", default-features = false }
 
 [profile.dev]
@@ -18,3 +18,5 @@ panic = "abort"
 
 [profile.release]
 panic = "abort"
+
+[workspace]

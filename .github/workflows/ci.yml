@@ -29,7 +29,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ matrix.rust }}
-      - run: cargo build --all-targets
+      - run: cargo build --workspace
+      - run: cd examples/no_std && cargo build
 
   test:
     runs-on: ubuntu-latest
