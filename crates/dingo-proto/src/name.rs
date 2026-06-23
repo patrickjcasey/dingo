@@ -41,6 +41,7 @@ impl<'a> Name<'a> {
     /// This method only validates that the name structure is valid; it does not
     /// decompress the name. Use [`labels()`](Self::labels) to iterate over the
     /// decompressed labels.
+    #[inline]
     pub fn parse(packet: &'a [u8], offset: usize) -> Result<(Self, usize), ParseError> {
         // Validate the name structure and find the end position
         let end = Self::validate_and_find_end(packet, offset)?;

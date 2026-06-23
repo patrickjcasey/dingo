@@ -34,6 +34,7 @@ impl<'a> Question<'a> {
     /// Parse a question from the packet data starting at the given offset.
     ///
     /// Returns the parsed question and the offset immediately after the question.
+    #[inline]
     pub fn parse(packet: &'a [u8], offset: usize) -> Result<(Self, usize), ParseError> {
         let (name, pos) = Name::parse(packet, offset)?;
 

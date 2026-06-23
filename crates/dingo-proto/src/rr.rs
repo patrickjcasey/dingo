@@ -72,6 +72,7 @@ impl<'a> ResourceRecord<'a> {
     /// Parse a resource record from the packet data starting at the given offset.
     ///
     /// Returns the parsed record and the offset immediately after the record.
+    #[inline]
     pub fn parse(packet: &'a [u8], offset: usize) -> Result<(Self, usize), ParseError> {
         let (name, mut pos) = Name::parse(packet, offset)?;
 
