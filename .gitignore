@@ -1,5 +1,7 @@
 target/
-Cargo.lock
+
+fuzz/Cargo.lock
+examples/no_std/Cargo.lock
 
 # Fuzzing artifacts
 fuzz/target/
