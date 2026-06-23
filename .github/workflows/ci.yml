@@ -66,5 +66,6 @@ jobs:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@nightly
       - run: cargo install cargo-fuzz
-      - run: cargo +nightly fuzz run parse_message -- -max_total_time=30
+        working-directory: fuzz
+      - run: cargo fuzz run parse_message -- -max_total_time=30
         working-directory: fuzz
