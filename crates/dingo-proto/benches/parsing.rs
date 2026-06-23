@@ -160,7 +160,12 @@ fn bench_minimal_query(c: &mut Criterion) {
     group.throughput(Throughput::Bytes(MINIMAL_QUERY.len() as u64));
 
     group.bench_function(BenchmarkId::new("parse", "dingo"), |b| {
-        b.iter(|| dingo_proto::Message::parse(black_box(MINIMAL_QUERY)))
+        b.iter(|| {
+            let msg = dingo_proto::Message::parse(black_box(MINIMAL_QUERY)).unwrap();
+            for q in msg.questions() {
+                let _ = black_box(q);
+            }
+        })
     });
     group.bench_function(BenchmarkId::new("parse", "hickory"), |b| {
         b.iter(|| HickoryMessage::from_vec(black_box(MINIMAL_QUERY)))
@@ -183,7 +188,15 @@ fn bench_response_with_answer(c: &mut Criterion) {
     group.throughput(Throughput::Bytes(RESPONSE_WITH_ANSWER.len() as u64));
 
     group.bench_function(BenchmarkId::new("parse", "dingo"), |b| {
-        b.iter(|| dingo_proto::Message::parse(black_box(RESPONSE_WITH_ANSWER)))
+        b.iter(|| {
+            let msg = dingo_proto::Message::parse(black_box(RESPONSE_WITH_ANSWER)).unwrap();
+            for q in msg.questions() {
+                let _ = black_box(q);
+            }
+            for a in msg.answers() {
+                let _ = black_box(a);
+            }
+        })
     });
     group.bench_function(BenchmarkId::new("parse", "hickory"), |b| {
         b.iter(|| HickoryMessage::from_vec(black_box(RESPONSE_WITH_ANSWER)))
@@ -208,7 +221,15 @@ fn bench_response_multiple_answers(c: &mut Criterion) {
     group.throughput(Throughput::Bytes(RESPONSE_MULTIPLE_ANSWERS.len() as u64));
 
     group.bench_function(BenchmarkId::new("parse", "dingo"), |b| {
-        b.iter(|| dingo_proto::Message::parse(black_box(RESPONSE_MULTIPLE_ANSWERS)))
+        b.iter(|| {
+            let msg = dingo_proto::Message::parse(black_box(RESPONSE_MULTIPLE_ANSWERS)).unwrap();
+            for q in msg.questions() {
+                let _ = black_box(q);
+            }
+            for a in msg.answers() {
+                let _ = black_box(a);
+            }
+        })
     });
     group.bench_function(BenchmarkId::new("parse", "hickory"), |b| {
         b.iter(|| HickoryMessage::from_vec(black_box(RESPONSE_MULTIPLE_ANSWERS)))
@@ -233,7 +254,18 @@ fn bench_heavy_compression(c: &mut Criterion) {
     group.throughput(Throughput::Bytes(RESPONSE_HEAVY_COMPRESSION.len() as u64));
 
     group.bench_function(BenchmarkId::new("parse", "dingo"), |b| {
-        b.iter(|| dingo_proto::Message::parse(black_box(RESPONSE_HEAVY_COMPRESSION)))
+        b.iter(|| {
+            let msg = dingo_proto::Message::parse(black_box(RESPONSE_HEAVY_COMPRESSION)).unwrap();
+            for q in msg.questions() {
+                let _ = black_box(q);
+            }
+            for ns in msg.authorities() {
+                let _ = black_box(ns);
+            }
+            for ar in msg.additionals() {
+                let _ = black_box(ar);
+            }
+        })
     });
     group.bench_function(BenchmarkId::new("parse", "hickory"), |b| {
         b.iter(|| HickoryMessage::from_vec(black_box(RESPONSE_HEAVY_COMPRESSION)))
