@@ -1,9 +1,10 @@
-# Dingo &emsp; [![License: MIT][license-badge]][license] [![Build Status][ci-badge]][ci]
+# Dingo &emsp; [![License: MIT][license-badge]][license] [![Build Status][ci-badge]][ci] ![MSRV][msrv-badge]
 
 [license-badge]: https://img.shields.io/badge/License-MIT-yellow.svg
 [license]: https://opensource.org/licenses/MIT
 [ci-badge]: https://img.shields.io/github/actions/workflow/status/patrickjcasey/dingo/ci.yml?branch=main
 [ci]: https://github.com/patrickjcasey/dingo/actions?query=branch%3Amain
+[msrv-badge]: https://img.shields.io/badge/MSRV-1.85.1-blue.svg
 
 **An high-performance DNS library written in Rust, focused on speed, security and ease of use.**
 
