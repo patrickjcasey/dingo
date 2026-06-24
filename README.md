@@ -6,7 +6,9 @@
 [ci]: https://github.com/patrickjcasey/dingo/actions?query=branch%3Amain
 [msrv-badge]: https://img.shields.io/badge/MSRV-1.85.1-blue.svg
 
-**An high-performance DNS library written in Rust, focused on speed, security and ease of use.**
+![Koala](assets/koala.jpg)
+
+**A high-performance DNS library written in Rust, focused on speed, security and ease of use.**
 
 ## Features
 
@@ -176,4 +178,10 @@ These are used solely for testing purposes and are not distributed as part of th
 
 ## Notes on LLMs
 
-I wrote most of the code in this repository by hand, but I did use an LLM (Claude Opus 4.5) for helping write some of the tests, to experiment with code ideas, writing some of the helper bash scripts, help with configuring CI and help setting up some of the fuzzing work. I believe this is the future of software development and I see it as a force multiplier.
+I wrote most of the code in this repository by hand, but I did use an LLM (Claude Opus 4.8) for helping write some of the tests, to experiment with code ideas, writing some of the helper bash scripts, help with configuring CI and help setting up some of the fuzzing work. I believe this is the future of software development and I see it as a force multiplier.
+
+## FAQ
+
+Why is the logo a koala, when the project is named Dingo?
+
+*Dingo sounded better for a DNS library, but koalas are cuter animals from Australia*
