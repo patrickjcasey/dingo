@@ -104,12 +104,11 @@ impl<'a> ResourceRecord<'a> {
                     return Err(ParseError::InvalidRdataLength);
                 }
             }
-            28 => {
+            28
                 // AAAA record must have exactly 16 bytes
-                if rdlength != 16 {
+                if rdlength != 16 => {
                     return Err(ParseError::InvalidRdataLength);
                 }
-            }
             _ => {
                 // Other record types: accept any RDLENGTH
             }
