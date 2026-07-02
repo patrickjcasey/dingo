@@ -22,7 +22,14 @@ pub const MAX_POINTER_CHAIN: usize = 128;
 /// Domain names in DNS are represented as a sequence of labels, where each label
 /// is a length-prefixed string. Names can use compression pointers to refer to
 /// previously occurring names in the message.
-#[derive(Debug, PartialEq, Eq, Hash)]
+///
+/// # Equality
+///
+/// Equality and hashing compare the decompressed labels ASCII-case-insensitively,
+/// as DNS names are case-insensitive (RFC 1035 §2.3.3, RFC 4343). A compressed
+/// name is equal to its uncompressed form, and names parsed from different
+/// packets or offsets are equal whenever their labels match.
+#[derive(Debug)]
 pub struct Name<'a> {
     /// The complete DNS packet data (needed for compression pointers).
     packet: &'a [u8],
@@ -194,6 +201,61 @@ impl<'a> Name<'a> {
     pub fn into_owned(self) -> NameOwned {
         self.into()
     }
+
+    /// Returns the labels wrapped for case-insensitive comparison.
+    fn labels_ci(&self) -> impl Iterator<Item = Result<CaseInsensitiveLabel<'a>, ParseError>> {
+        self.labels().map(|r| r.map(CaseInsensitiveLabel))
+    }
+}
+
+/// A label wrapper whose equality is ASCII-case-insensitive, so the [`Name`]
+/// and [`NameOwned`] comparisons below can be expressed with [`Iterator::eq`].
+struct CaseInsensitiveLabel<'a>(&'a [u8]);
+
+impl PartialEq for CaseInsensitiveLabel<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.eq_ignore_ascii_case(other.0)
+    }
+}
+
+impl PartialEq for Name<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.labels_ci().eq(other.labels_ci())
+    }
+}
+
+impl Eq for Name<'_> {}
+
+impl PartialEq<NameOwned> for Name<'_> {
+    fn eq(&self, other: &NameOwned) -> bool {
+        self.labels_ci().eq(other.labels_ci())
+    }
+}
+
+impl PartialEq<Name<'_>> for NameOwned {
+    fn eq(&self, other: &Name<'_>) -> bool {
+        other == self
+    }
+}
+
+impl core::hash::Hash for Name<'_> {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+        for label in self.labels() {
+            // Iteration stops after the first error, so hashing the labels up
+            // to that point stays consistent with `PartialEq`.
+            let Ok(label) = label else { break };
+            hash_label(label, state);
+        }
+    }
+}
+
+/// Hashes a label as its length followed by its ASCII-lowercased bytes, so that
+/// hashing matches the case-insensitive equality of [`Name`] and [`NameOwned`].
+fn hash_label<H: core::hash::Hasher>(label: &[u8], state: &mut H) {
+    state.write_usize(label.len());
+    for &byte in label {
+        state.write_u8(byte.to_ascii_lowercase());
+    }
 }
 
 impl core::fmt::Display for Name<'_> {
@@ -317,7 +379,12 @@ impl<'a> Iterator for LabelIter<'a> {
 /// Domain names in DNS are represented as a sequence of labels, where each label
 /// is a length-prefixed string. This owned variant stores labels in allocated vectors,
 /// suitable for long-term storage or modification.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+///
+/// # Equality
+///
+/// Equality and hashing compare the labels ASCII-case-insensitively,
+/// as DNS names are case-insensitive (RFC 1035 §2.3.3, RFC 4343).
+#[derive(Debug, Clone)]
 pub struct NameOwned {
     /// The labels that make up this domain name.
     ///
@@ -369,6 +436,27 @@ impl NameOwned {
     #[inline]
     pub fn encoded_len(&self) -> usize {
         self.labels.iter().fold(0usize, |acc, x| acc + 1 + x.len()) + 1
+    }
+
+    /// Returns the labels wrapped for case-insensitive comparison.
+    fn labels_ci(&self) -> impl Iterator<Item = Result<CaseInsensitiveLabel<'_>, ParseError>> {
+        self.labels.iter().map(|l| Ok(CaseInsensitiveLabel(l)))
+    }
+}
+
+impl PartialEq for NameOwned {
+    fn eq(&self, other: &Self) -> bool {
+        self.labels.len() == other.labels.len() && self.labels_ci().eq(other.labels_ci())
+    }
+}
+
+impl Eq for NameOwned {}
+
+impl core::hash::Hash for NameOwned {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+        for label in &self.labels {
+            hash_label(label, state);
+        }
     }
 }
 
@@ -723,6 +811,143 @@ mod tests {
 
         // "example.com." = 1+7 + 1+3 + 1 = 13
         assert_eq!(name.encoded_len(), 13);
+    }
+
+    /// FNV-1a; a deterministic hasher so tests don't depend on `std`.
+    fn hash_of<T: core::hash::Hash>(value: &T) -> u64 {
+        use core::hash::Hasher;
+
+        struct Fnv(u64);
+        impl core::hash::Hasher for Fnv {
+            fn finish(&self) -> u64 {
+                self.0
+            }
+            fn write(&mut self, bytes: &[u8]) {
+                for &byte in bytes {
+                    self.0 ^= byte as u64;
+                    self.0 = self.0.wrapping_mul(0x100_0000_01b3);
+                }
+            }
+        }
+        let mut hasher = Fnv(0xcbf2_9ce4_8422_2325);
+        value.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    #[test]
+    fn test_eq_compressed_vs_uncompressed() {
+        // "example.com." spelled out at offset 0 and referenced via pointer at offset 13
+        #[rustfmt::skip]
+        let data = [
+            0x07, b'e', b'x', b'a', b'm', b'p', b'l', b'e',
+            0x03, b'c', b'o', b'm',
+            0x00,
+            0xC0, 0x00, // pointer to offset 0
+        ];
+
+        let (uncompressed, _) = Name::parse(&data, 0).unwrap();
+        let (compressed, _) = Name::parse(&data, 13).unwrap();
+
+        assert_eq!(uncompressed, compressed);
+        assert_eq!(hash_of(&uncompressed), hash_of(&compressed));
+    }
+
+    #[test]
+    fn test_eq_across_packets() {
+        let packet_a = [0x03, b'c', b'o', b'm', 0x00];
+        let packet_b = [0xFF, 0xFF, 0x03, b'c', b'o', b'm', 0x00]; // same name, different packet/offset
+
+        let (a, _) = Name::parse(&packet_a, 0).unwrap();
+        let (b, _) = Name::parse(&packet_b, 2).unwrap();
+
+        assert_eq!(a, b);
+        assert_eq!(hash_of(&a), hash_of(&b));
+    }
+
+    #[test]
+    fn test_eq_case_insensitive() {
+        let lower = [0x03, b'c', b'o', b'm', 0x00];
+        let upper = [0x03, b'C', b'O', b'M', 0x00];
+
+        let (a, _) = Name::parse(&lower, 0).unwrap();
+        let (b, _) = Name::parse(&upper, 0).unwrap();
+
+        assert_eq!(a, b);
+        assert_eq!(hash_of(&a), hash_of(&b));
+    }
+
+    #[test]
+    fn test_ne_different_names() {
+        let com = [0x03, b'c', b'o', b'm', 0x00];
+        let net = [0x03, b'n', b'e', b't', 0x00];
+        let a_com = [0x01, b'a', 0x03, b'c', b'o', b'm', 0x00];
+
+        let (com, _) = Name::parse(&com, 0).unwrap();
+        let (net, _) = Name::parse(&net, 0).unwrap();
+        let (a_com, _) = Name::parse(&a_com, 0).unwrap();
+
+        assert_ne!(com, net);
+        assert_ne!(com, a_com);
+    }
+
+    #[test]
+    fn test_ne_label_prefix() {
+        // "com." vs "com.a." — the shorter name's labels are a strict prefix of
+        // the longer's, so inequality is only detected when one side runs out.
+        let com = [0x03, b'c', b'o', b'm', 0x00];
+        let com_a = [0x03, b'c', b'o', b'm', 0x01, b'a', 0x00];
+
+        let (short, _) = Name::parse(&com, 0).unwrap();
+        let (long, _) = Name::parse(&com_a, 0).unwrap();
+        let (short_owned, _) = NameOwned::parse(&com, 0).unwrap();
+        let (long_owned, _) = NameOwned::parse(&com_a, 0).unwrap();
+
+        assert_ne!(short, long);
+        assert_ne!(long, short);
+        assert_ne!(short_owned, long_owned);
+        assert_ne!(short, long_owned);
+        assert_ne!(long_owned, short);
+    }
+
+    #[test]
+    fn test_eq_borrowed_vs_owned() {
+        let lower = [0x03, b'c', b'o', b'm', 0x00];
+        let upper = [0x03, b'C', b'O', b'M', 0x00];
+        let net = [0x03, b'n', b'e', b't', 0x00];
+
+        let (borrowed, _) = Name::parse(&lower, 0).unwrap();
+        let (owned, _) = NameOwned::parse(&upper, 0).unwrap();
+        let (other, _) = NameOwned::parse(&net, 0).unwrap();
+
+        assert_eq!(borrowed, owned);
+        assert_eq!(owned, borrowed);
+        assert_ne!(borrowed, other);
+        // Equal names must hash identically across the borrowed/owned types.
+        assert_eq!(hash_of(&borrowed), hash_of(&owned));
+    }
+
+    #[test]
+    fn test_name_owned_eq_case_insensitive() {
+        let lower = [0x03, b'c', b'o', b'm', 0x00];
+        let upper = [0x03, b'C', b'O', b'M', 0x00];
+
+        let (a, _) = NameOwned::parse(&lower, 0).unwrap();
+        let (b, _) = NameOwned::parse(&upper, 0).unwrap();
+
+        assert_eq!(a, b);
+        assert_eq!(hash_of(&a), hash_of(&b));
+    }
+
+    #[test]
+    fn test_eq_root_names() {
+        let a = [0x00];
+        let b = [0xFF, 0x00];
+
+        let (a, _) = Name::parse(&a, 0).unwrap();
+        let (b, _) = Name::parse(&b, 1).unwrap();
+
+        assert_eq!(a, b);
+        assert_eq!(hash_of(&a), hash_of(&b));
     }
 
     #[test]

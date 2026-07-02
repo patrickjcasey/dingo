@@ -12,7 +12,13 @@ use crate::name::{Name, NameOwned};
 /// Resource records contain the actual DNS data such as IP addresses,
 /// name server information, mail exchange records, etc. This borrowed variant
 /// references the original packet data without allocation.
-#[derive(Debug, PartialEq, Eq, Hash)]
+///
+/// # Equality
+///
+/// Equality and hashing compare the record's name (ASCII-case-insensitively,
+/// see [`Name`]), type, class, TTL, and RDATA — not the backing packet. Two
+/// records parsed from different packets are equal whenever those fields match.
+#[derive(Debug)]
 pub struct ResourceRecord<'a> {
     /// The domain name to which this record pertains.
     pub name: Name<'a>,
@@ -195,6 +201,30 @@ impl<'a> ResourceRecord<'a> {
     /// Converts this borrowed resource record to an owned [`ResourceRecordOwned`].
     pub fn into_owned(self) -> ResourceRecordOwned {
         self.into()
+    }
+}
+
+impl PartialEq for ResourceRecord<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+            && self.rtype == other.rtype
+            && self.rclass == other.rclass
+            && self.ttl == other.ttl
+            && self.rdlength == other.rdlength
+            && self.rdata == other.rdata
+    }
+}
+
+impl Eq for ResourceRecord<'_> {}
+
+impl core::hash::Hash for ResourceRecord<'_> {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
+        self.rtype.hash(state);
+        self.rclass.hash(state);
+        self.ttl.hash(state);
+        self.rdlength.hash(state);
+        self.rdata.hash(state);
     }
 }
 
@@ -806,6 +836,40 @@ mod tests {
         assert_eq!(rr.rdlength, 0);
         assert!(rr.rdata.is_empty());
         assert_eq!(end_offset, data.len());
+    }
+
+    #[test]
+    fn test_rr_eq_across_packets() {
+        // The same A record: spelled out in one packet, name-compressed in another
+        #[rustfmt::skip]
+        let plain = [
+            0x03, b'w', b'w', b'w', 0x00, // name: www.
+            0x00, 0x01,                   // TYPE = A
+            0x00, 0x01,                   // CLASS = IN
+            0x00, 0x00, 0x00, 0x3C,       // TTL = 60
+            0x00, 0x04,                   // RDLENGTH = 4
+            0x01, 0x02, 0x03, 0x04,       // RDATA = 1.2.3.4
+        ];
+        #[rustfmt::skip]
+        let compressed = [
+            0x03, b'W', b'W', b'W', 0x00, // "WWW." at offset 0 (differs only in case)
+            0xC0, 0x00,                   // name: pointer to offset 0
+            0x00, 0x01,                   // TYPE = A
+            0x00, 0x01,                   // CLASS = IN
+            0x00, 0x00, 0x00, 0x3C,       // TTL = 60
+            0x00, 0x04,                   // RDLENGTH = 4
+            0x01, 0x02, 0x03, 0x04,       // RDATA = 1.2.3.4
+        ];
+
+        let (a, _) = ResourceRecord::parse(&plain, 0).unwrap();
+        let (b, _) = ResourceRecord::parse(&compressed, 5).unwrap();
+        assert_eq!(a, b);
+
+        // A record differing only in RDATA is not equal
+        let mut different = plain;
+        *different.last_mut().unwrap() = 0x05;
+        let (c, _) = ResourceRecord::parse(&different, 0).unwrap();
+        assert_ne!(a, c);
     }
 
     #[test]
