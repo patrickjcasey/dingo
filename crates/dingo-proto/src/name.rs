@@ -201,20 +201,26 @@ impl<'a> Name<'a> {
     pub fn into_owned(self) -> NameOwned {
         self.into()
     }
+
+    /// Returns the labels wrapped for case-insensitive comparison.
+    fn labels_ci(&self) -> impl Iterator<Item = Result<CaseInsensitiveLabel<'a>, ParseError>> {
+        self.labels().map(|r| r.map(CaseInsensitiveLabel))
+    }
+}
+
+/// A label wrapper whose equality is ASCII-case-insensitive, so the [`Name`]
+/// and [`NameOwned`] comparisons below can be expressed with [`Iterator::eq`].
+struct CaseInsensitiveLabel<'a>(&'a [u8]);
+
+impl PartialEq for CaseInsensitiveLabel<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.eq_ignore_ascii_case(other.0)
+    }
 }
 
 impl PartialEq for Name<'_> {
     fn eq(&self, other: &Self) -> bool {
-        let mut ours = self.labels();
-        let mut theirs = other.labels();
-        loop {
-            match (ours.next(), theirs.next()) {
-                (None, None) => return true,
-                (Some(Ok(a)), Some(Ok(b))) if a.eq_ignore_ascii_case(b) => {}
-                (Some(Err(a)), Some(Err(b))) if a == b => {}
-                _ => return false,
-            }
-        }
+        self.labels_ci().eq(other.labels_ci())
     }
 }
 
@@ -222,14 +228,7 @@ impl Eq for Name<'_> {}
 
 impl PartialEq<NameOwned> for Name<'_> {
     fn eq(&self, other: &NameOwned) -> bool {
-        let mut theirs = other.labels().iter();
-        for label in self.labels() {
-            match (label, theirs.next()) {
-                (Ok(a), Some(b)) if a.eq_ignore_ascii_case(b) => {}
-                _ => return false,
-            }
-        }
-        theirs.next().is_none()
+        self.labels_ci().eq(other.labels_ci())
     }
 }
 
@@ -438,16 +437,16 @@ impl NameOwned {
     pub fn encoded_len(&self) -> usize {
         self.labels.iter().fold(0usize, |acc, x| acc + 1 + x.len()) + 1
     }
+
+    /// Returns the labels wrapped for case-insensitive comparison.
+    fn labels_ci(&self) -> impl Iterator<Item = Result<CaseInsensitiveLabel<'_>, ParseError>> {
+        self.labels.iter().map(|l| Ok(CaseInsensitiveLabel(l)))
+    }
 }
 
 impl PartialEq for NameOwned {
     fn eq(&self, other: &Self) -> bool {
-        self.labels.len() == other.labels.len()
-            && self
-                .labels
-                .iter()
-                .zip(&other.labels)
-                .all(|(a, b)| a.eq_ignore_ascii_case(b))
+        self.labels.len() == other.labels.len() && self.labels_ci().eq(other.labels_ci())
     }
 }
 
@@ -892,6 +891,25 @@ mod tests {
     }
 
     #[test]
+    fn test_ne_label_prefix() {
+        // "com." vs "com.a." — the shorter name's labels are a strict prefix of
+        // the longer's, so inequality is only detected when one side runs out.
+        let com = [0x03, b'c', b'o', b'm', 0x00];
+        let com_a = [0x03, b'c', b'o', b'm', 0x01, b'a', 0x00];
+
+        let (short, _) = Name::parse(&com, 0).unwrap();
+        let (long, _) = Name::parse(&com_a, 0).unwrap();
+        let (short_owned, _) = NameOwned::parse(&com, 0).unwrap();
+        let (long_owned, _) = NameOwned::parse(&com_a, 0).unwrap();
+
+        assert_ne!(short, long);
+        assert_ne!(long, short);
+        assert_ne!(short_owned, long_owned);
+        assert_ne!(short, long_owned);
+        assert_ne!(long_owned, short);
+    }
+
+    #[test]
     fn test_eq_borrowed_vs_owned() {
         let lower = [0x03, b'c', b'o', b'm', 0x00];
         let upper = [0x03, b'C', b'O', b'M', 0x00];
@@ -904,6 +922,8 @@ mod tests {
         assert_eq!(borrowed, owned);
         assert_eq!(owned, borrowed);
         assert_ne!(borrowed, other);
+        // Equal names must hash identically across the borrowed/owned types.
+        assert_eq!(hash_of(&borrowed), hash_of(&owned));
     }
 
     #[test]
