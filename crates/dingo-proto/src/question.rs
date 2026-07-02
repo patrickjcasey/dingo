@@ -34,17 +34,15 @@ impl<'a> Question<'a> {
     /// Parse a question from the packet data starting at the given offset.
     ///
     /// Returns the parsed question and the offset immediately after the question.
+    #[inline]
     pub fn parse(packet: &'a [u8], offset: usize) -> Result<(Self, usize), ParseError> {
         let (name, pos) = Name::parse(packet, offset)?;
 
-        if pos + 2 > packet.len() {
-            return Err(ParseError::BufferTooShort);
-        }
-        let qtype = u16::from_be_bytes([packet[pos], packet[pos + 1]]);
-
+        // QTYPE and QCLASS form a fixed 4-byte block; one bounds check covers both.
         if pos + 4 > packet.len() {
             return Err(ParseError::BufferTooShort);
         }
+        let qtype = u16::from_be_bytes([packet[pos], packet[pos + 1]]);
         let qclass = u16::from_be_bytes([packet[pos + 2], packet[pos + 3]]);
 
         let question = Self {

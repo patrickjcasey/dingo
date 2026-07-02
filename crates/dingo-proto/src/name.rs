@@ -41,6 +41,7 @@ impl<'a> Name<'a> {
     /// This method only validates that the name structure is valid; it does not
     /// decompress the name. Use [`labels()`](Self::labels) to iterate over the
     /// decompressed labels.
+    #[inline]
     pub fn parse(packet: &'a [u8], offset: usize) -> Result<(Self, usize), ParseError> {
         // Validate the name structure and find the end position
         let end = Self::validate_and_find_end(packet, offset)?;
@@ -61,24 +62,13 @@ impl<'a> Name<'a> {
         let mut end_pos: Option<usize> = None;
         let mut total_len: usize = 0;
 
-        // We only need to track positions we've visited to detect loops
-        let mut visited = [0u16; MAX_POINTER_CHAIN];
-        let mut visited_count = 0;
+        // Only compression pointers can create loops; plain labels always advance
+        // `pos` forward and are bounded by MAX_NAME_LENGTH. So we only track pointer
+        // targets to detect cycles, not every visited position.
+        let mut pointers = [0u16; MAX_POINTER_CHAIN];
+        let mut pointer_count = 0;
 
         loop {
-            // Check for loops
-            let pos_u16 = pos as u16;
-
-            if visited[..visited_count].contains(&pos_u16) {
-                return Err(ParseError::CompressionPointerLoop);
-            }
-            if visited_count >= MAX_POINTER_CHAIN {
-                return Err(ParseError::CompressionPointerLoop);
-            }
-
-            visited[visited_count] = pos_u16;
-            visited_count += 1;
-
             if pos >= packet.len() {
                 return Err(ParseError::BufferTooShort);
             }
@@ -127,6 +117,16 @@ impl<'a> Name<'a> {
                     if ptr_offset > pos {
                         return Err(ParseError::CompressionPointerForward);
                     }
+
+                    // Detect loops by tracking pointer targets we've already followed.
+                    let ptr_u16 = ptr_offset as u16;
+                    if pointers[..pointer_count].contains(&ptr_u16)
+                        || pointer_count >= MAX_POINTER_CHAIN
+                    {
+                        return Err(ParseError::CompressionPointerLoop);
+                    }
+                    pointers[pointer_count] = ptr_u16;
+                    pointer_count += 1;
 
                     if end_pos.is_none() {
                         end_pos = Some(pos + 2);
@@ -235,8 +235,8 @@ impl<'a> From<Name<'a>> for NameOwned {
 pub struct LabelIter<'a> {
     packet: &'a [u8],
     pos: usize,
-    visited: [u16; MAX_POINTER_CHAIN],
-    visited_count: usize,
+    pointers: [u16; MAX_POINTER_CHAIN],
+    pointer_count: usize,
     done: bool,
 }
 
@@ -245,8 +245,8 @@ impl<'a> LabelIter<'a> {
         Self {
             packet,
             pos: start,
-            visited: [0u16; MAX_POINTER_CHAIN],
-            visited_count: 0,
+            pointers: [0u16; MAX_POINTER_CHAIN],
+            pointer_count: 0,
             done: false,
         }
     }
@@ -261,22 +261,6 @@ impl<'a> Iterator for LabelIter<'a> {
         }
 
         loop {
-            // Check for loops
-            let pos_u16 = self.pos as u16;
-            for i in 0..self.visited_count {
-                if self.visited[i] == pos_u16 {
-                    self.done = true;
-                    return Some(Err(ParseError::CompressionPointerLoop));
-                }
-            }
-
-            if self.visited_count >= MAX_POINTER_CHAIN {
-                self.done = true;
-                return Some(Err(ParseError::CompressionPointerLoop));
-            }
-            self.visited[self.visited_count] = pos_u16;
-            self.visited_count += 1;
-
             if self.pos >= self.packet.len() {
                 self.done = true;
                 return Some(Err(ParseError::BufferTooShort));
@@ -316,6 +300,17 @@ impl<'a> Iterator for LabelIter<'a> {
                         self.done = true;
                         return Some(Err(ParseError::CompressionPointerOutOfBounds));
                     }
+
+                    // Detect loops by tracking pointer targets already followed.
+                    let ptr_u16 = ptr_offset as u16;
+                    if self.pointers[..self.pointer_count].contains(&ptr_u16)
+                        || self.pointer_count >= MAX_POINTER_CHAIN
+                    {
+                        self.done = true;
+                        return Some(Err(ParseError::CompressionPointerLoop));
+                    }
+                    self.pointers[self.pointer_count] = ptr_u16;
+                    self.pointer_count += 1;
 
                     self.pos = ptr_offset;
                     // Continue the loop to follow the pointer

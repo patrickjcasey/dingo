@@ -65,40 +65,32 @@ impl<'a> ResourceRecord<'a> {
     const TTL_LEN: usize = core::mem::size_of::<u32>();
     const RDLENGTH_LEN: usize = core::mem::size_of::<u16>();
 
+    /// TYPE + CLASS + TTL + RDLENGTH: the fixed-size fields between the name and RDATA.
+    const FIXED_FIELDS_LEN: usize =
+        Self::RTYPE_LEN + Self::RCLASS_LEN + Self::TTL_LEN + Self::RDLENGTH_LEN;
+
     /// Parse a resource record from the packet data starting at the given offset.
     ///
     /// Returns the parsed record and the offset immediately after the record.
+    #[inline]
     pub fn parse(packet: &'a [u8], offset: usize) -> Result<(Self, usize), ParseError> {
         let (name, mut pos) = Name::parse(packet, offset)?;
 
-        if pos + Self::RTYPE_LEN > packet.len() {
+        // TYPE, CLASS, TTL and RDLENGTH form a fixed 10-byte block; a single bounds
+        // check covers all four before we read them at known offsets.
+        if pos + Self::FIXED_FIELDS_LEN > packet.len() {
             return Err(ParseError::BufferTooShort);
         }
         let rtype = u16::from_be_bytes([packet[pos], packet[pos + 1]]);
-        pos += Self::RTYPE_LEN;
-
-        if pos + Self::RCLASS_LEN > packet.len() {
-            return Err(ParseError::BufferTooShort);
-        }
-        let rclass = u16::from_be_bytes([packet[pos], packet[pos + 1]]);
-        pos += Self::RCLASS_LEN;
-
-        if pos + Self::TTL_LEN > packet.len() {
-            return Err(ParseError::BufferTooShort);
-        }
+        let rclass = u16::from_be_bytes([packet[pos + 2], packet[pos + 3]]);
         let ttl = u32::from_be_bytes([
-            packet[pos],
-            packet[pos + 1],
-            packet[pos + 2],
-            packet[pos + 3],
+            packet[pos + 4],
+            packet[pos + 5],
+            packet[pos + 6],
+            packet[pos + 7],
         ]);
-        pos += Self::TTL_LEN;
-
-        if pos + Self::RDLENGTH_LEN > packet.len() {
-            return Err(ParseError::BufferTooShort);
-        }
-        let rdlength = u16::from_be_bytes([packet[pos], packet[pos + 1]]);
-        pos += Self::RDLENGTH_LEN;
+        let rdlength = u16::from_be_bytes([packet[pos + 8], packet[pos + 9]]);
+        pos += Self::FIXED_FIELDS_LEN;
         let rdlength_usize = rdlength as usize;
 
         if pos + rdlength_usize > packet.len() {
@@ -112,12 +104,11 @@ impl<'a> ResourceRecord<'a> {
                     return Err(ParseError::InvalidRdataLength);
                 }
             }
-            28 => {
+            28
                 // AAAA record must have exactly 16 bytes
-                if rdlength != 16 {
+                if rdlength != 16 => {
                     return Err(ParseError::InvalidRdataLength);
                 }
-            }
             _ => {
                 // Other record types: accept any RDLENGTH
             }
