@@ -63,9 +63,9 @@ impl<'a> Name<'a> {
         let mut total_len: usize = 0;
 
         // Only compression pointers can create loops; plain labels always advance
-        // `pos` forward and are bounded by MAX_NAME_LENGTH. So we only track pointer
-        // targets to detect cycles, not every visited position.
-        let mut pointers = [0u16; MAX_POINTER_CHAIN];
+        // `pos` forward and are bounded by MAX_NAME_LENGTH. Capping the number of
+        // pointers followed bounds the walk, so a cycle exhausts the cap and errors
+        // without needing to record visited targets.
         let mut pointer_count = 0;
 
         loop {
@@ -118,14 +118,9 @@ impl<'a> Name<'a> {
                         return Err(ParseError::CompressionPointerForward);
                     }
 
-                    // Detect loops by tracking pointer targets we've already followed.
-                    let ptr_u16 = ptr_offset as u16;
-                    if pointers[..pointer_count].contains(&ptr_u16)
-                        || pointer_count >= MAX_POINTER_CHAIN
-                    {
+                    if pointer_count >= MAX_POINTER_CHAIN {
                         return Err(ParseError::CompressionPointerLoop);
                     }
-                    pointers[pointer_count] = ptr_u16;
                     pointer_count += 1;
 
                     if end_pos.is_none() {
@@ -235,7 +230,6 @@ impl<'a> From<Name<'a>> for NameOwned {
 pub struct LabelIter<'a> {
     packet: &'a [u8],
     pos: usize,
-    pointers: [u16; MAX_POINTER_CHAIN],
     pointer_count: usize,
     done: bool,
 }
@@ -245,7 +239,6 @@ impl<'a> LabelIter<'a> {
         Self {
             packet,
             pos: start,
-            pointers: [0u16; MAX_POINTER_CHAIN],
             pointer_count: 0,
             done: false,
         }
@@ -301,15 +294,10 @@ impl<'a> Iterator for LabelIter<'a> {
                         return Some(Err(ParseError::CompressionPointerOutOfBounds));
                     }
 
-                    // Detect loops by tracking pointer targets already followed.
-                    let ptr_u16 = ptr_offset as u16;
-                    if self.pointers[..self.pointer_count].contains(&ptr_u16)
-                        || self.pointer_count >= MAX_POINTER_CHAIN
-                    {
+                    if self.pointer_count >= MAX_POINTER_CHAIN {
                         self.done = true;
                         return Some(Err(ParseError::CompressionPointerLoop));
                     }
-                    self.pointers[self.pointer_count] = ptr_u16;
                     self.pointer_count += 1;
 
                     self.pos = ptr_offset;
