@@ -6,7 +6,7 @@ on:
       - "dingo-proto-v*"
 
 jobs:
-  publish:
+  verify-tag:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
