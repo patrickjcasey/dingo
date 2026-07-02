@@ -4,7 +4,7 @@ use crate::question::{Question, QuestionOwned};
 use crate::rr::{ResourceRecord, ResourceRecordOwned};
 use crate::{Header, ParseError, QR, ResponseCode};
 
-/// A zero-copy DNS message with lazy parsing.
+/// A zero-copy DNS message.
 ///
 /// DNS messages consist of a header followed by four sections:
 /// - Question section: what is being asked
@@ -12,9 +12,9 @@ use crate::{Header, ParseError, QR, ResponseCode};
 /// - Authority section: resource records pointing to authoritative name servers
 /// - Additional section: resource records with additional information
 ///
-/// This type only parses the header on construction. The sections are parsed
-/// lazily when you iterate over them, yielding `Result` items to handle
-/// per-record parsing errors.
+/// [`parse`](Self::parse) validates the entire packet upfront without
+/// allocating; the section iterators then yield records directly from the
+/// packet data, so iteration is infallible.
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub struct Message<'a> {
     /// The DNS header containing flags and section counts.
