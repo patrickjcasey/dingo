@@ -23,6 +23,29 @@ jobs:
             exit 1
           fi
 
+  verify-branch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Verify tag commit is on main
+        run: |
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "Tag ${GITHUB_REF_NAME} points to a commit that is not on main" >&2
+            exit 1
+          fi
+
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    runs-on: ubuntu-latest
+    needs: [verify-tag, verify-branch, ci]
+    steps:
+      - uses: actions/checkout@v6
+
       - name: Publish to crates.io
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
