@@ -11,8 +11,12 @@ pub enum ParseError {
     CompressionPointerOutOfBounds,
     /// Compression pointer points forward to data not yet parsed.
     CompressionPointerForward,
-    /// Label length exceeds the maximum of 63 octets.
-    LabelLengthTooLong,
+    /// Label uses a reserved or unsupported label type (first two bits `01` or
+    /// `10`, e.g. RFC 6891 extended labels).
+    ///
+    /// A length octet above 63 falls in this range, so labels longer than 63
+    /// octets are also reported with this error.
+    UnsupportedLabelType,
     /// Domain name exceeds the maximum of 255 octets after decompression.
     NameTooLong,
     /// RDLENGTH exceeds the remaining packet data.
@@ -36,7 +40,9 @@ impl Display for ParseError {
             ParseError::CompressionPointerForward => {
                 write!(f, "compression pointer points forward")
             }
-            ParseError::LabelLengthTooLong => write!(f, "label length exceeds 63 octets"),
+            ParseError::UnsupportedLabelType => {
+                write!(f, "unsupported label type or label exceeds 63 octets")
+            }
             ParseError::NameTooLong => write!(f, "domain name exceeds 255 octets"),
             ParseError::RdataOverflow => write!(f, "RDLENGTH exceeds remaining packet"),
             ParseError::InvalidRdataLength => write!(f, "RDLENGTH invalid for record type"),
