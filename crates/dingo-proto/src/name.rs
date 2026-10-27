@@ -10,7 +10,9 @@ use crate::ParseError;
 /// Maximum length of a domain name (255 octets per RFC 1035).
 pub const MAX_NAME_LENGTH: usize = 255;
 
-/// Maximum compression pointer chain depth to prevent stack overflow.
+/// Maximum number of compression pointers followed while parsing one name.
+///
+/// Bounds the work done per name; longer chains are rejected even if they never loop.
 pub const MAX_POINTER_CHAIN: usize = 128;
 
 /// A zero-copy borrowed DNS domain name.
@@ -118,8 +120,12 @@ impl<'a> Name<'a> {
                         return Err(ParseError::CompressionPointerForward);
                     }
 
-                    if pointer_count >= MAX_POINTER_CHAIN {
+                    if ptr_offset == pos {
                         return Err(ParseError::CompressionPointerLoop);
+                    }
+
+                    if pointer_count >= MAX_POINTER_CHAIN {
+                        return Err(ParseError::TooManyCompressionPointers);
                     }
                     pointer_count += 1;
 
@@ -350,9 +356,14 @@ impl<'a> Iterator for LabelIter<'a> {
                         return Some(Err(ParseError::CompressionPointerOutOfBounds));
                     }
 
-                    if self.pointer_count >= MAX_POINTER_CHAIN {
+                    if ptr_offset == self.pos {
                         self.done = true;
                         return Some(Err(ParseError::CompressionPointerLoop));
+                    }
+
+                    if self.pointer_count >= MAX_POINTER_CHAIN {
+                        self.done = true;
+                        return Some(Err(ParseError::TooManyCompressionPointers));
                     }
                     self.pointer_count += 1;
 
@@ -538,6 +549,41 @@ mod tests {
 
         assert_eq!(name.to_string(), "com.");
         assert_eq!(next_offset, 5); // After "com." but before trailing data
+    }
+
+    /// Builds a root name at offset 0 followed by `count` pointers, each pointing
+    /// to the one before it. Returns the packet and the offset of the last pointer.
+    fn pointer_chain(count: usize) -> (Vec<u8>, usize) {
+        let mut data = vec![0x00];
+        let mut target = 0usize;
+        for _ in 0..count {
+            let pos = data.len();
+            data.push(0xC0 | (target >> 8) as u8);
+            data.push(target as u8);
+            target = pos;
+        }
+        (data, target)
+    }
+
+    #[test]
+    fn test_pointer_chain_at_limit_accepted() {
+        let (data, start) = pointer_chain(MAX_POINTER_CHAIN);
+
+        let (name, end) = Name::parse(&data, start).unwrap();
+        assert!(name.labels().next().is_none());
+        assert_eq!(end, data.len());
+    }
+
+    #[test]
+    fn test_pointer_chain_over_limit_rejected() {
+        // A long backward chain never loops, but exceeds the per-name limit
+        let (data, start) = pointer_chain(MAX_POINTER_CHAIN + 1);
+
+        let result = Name::parse(&data, start);
+        assert!(
+            matches!(result, Err(ParseError::TooManyCompressionPointers)),
+            "Expected TooManyCompressionPointers, got {result:?}"
+        );
     }
 
     #[test]
