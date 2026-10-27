@@ -95,15 +95,18 @@ pub enum ResponseCode {
     NameError,
     NotImplemented,
     Refused,
-    /// Extended RCODE values (6-10) or reserved values.
-    ///
-    /// Values 6-10 are used by DNS UPDATE (RFC 2136) and other extensions:
-    /// - 6 = YXDomain (name exists when it should not)
-    /// - 7 = YXRRSet (RR set exists when it should not)
-    /// - 8 = NXRRSet (RR set does not exist when it should)
-    /// - 9 = NotAuth (server not authoritative / not authorized)
-    /// - 10 = NotZone (name not in zone)
-    Reserved = 11,
+    /// Name exists when it should not (RFC 2136)
+    YXDomain,
+    /// RR set exists when it should not (RFC 2136)
+    YXRRSet,
+    /// RR set that should exist does not (RFC 2136)
+    NXRRSet,
+    /// Server not authoritative for zone / not authorized (RFC 2136, RFC 8945)
+    NotAuth,
+    /// Name not contained in zone (RFC 2136)
+    NotZone,
+    /// Unassigned RCODE values (11-15)
+    Reserved,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -113,40 +116,17 @@ impl Header {
     /// number of bytes needed to construct a `Header` within a DNS Request
     const SIZE: usize = 12;
 
-    /// The reserved Z bit mask (bit 9, 0x40 in byte 3).
-    /// Bits 10-11 (AD/CD) are used by DNSSEC and are allowed.
-    const RESERVED_Z_BIT: u8 = 0x40;
-
-    /// Maximum valid OPCODE (0-5 are assigned, 6-15 are reserved).
-    const MAX_VALID_OPCODE: u8 = 5;
-
-    /// Maximum valid RCODE (0-10 are assigned, 11-15 are reserved).
-    const MAX_VALID_RCODE: u8 = 10;
-
+    /// Parses a header from the start of `bytes`.
+    ///
+    /// The OPCODE, RCODE, and Z bit are not validated: unassigned values are
+    /// left for the caller to interpret (e.g. a server answering an unknown
+    /// OPCODE with NOTIMP, per RFC 1035 section 4.1.1).
     #[inline]
     pub fn parse(bytes: &[u8]) -> Result<(Self, &[u8]), ParseError> {
         let (header, remainder) = bytes
             .split_at_checked(Self::SIZE)
             .ok_or(ParseError::BufferTooShort)?;
         let header = <[u8; 12]>::try_from(header).unwrap();
-
-        // Validate reserved Z bit (bit 9) is zero.
-        // Note: Bits 10-11 (AD/CD) are used by DNSSEC (RFC 4035) and are allowed.
-        if header[3] & Self::RESERVED_Z_BIT != 0 {
-            return Err(ParseError::ReservedHeaderBit);
-        }
-
-        // Validate OPCODE is in known range (0-5).
-        let opcode = (header[2] >> 3) & 0x0F;
-        if opcode > Self::MAX_VALID_OPCODE {
-            return Err(ParseError::InvalidOpcode);
-        }
-
-        // Validate RCODE is in known range (0-10).
-        let rcode = header[3] & 0x0F;
-        if rcode > Self::MAX_VALID_RCODE {
-            return Err(ParseError::InvalidResponseCode);
-        }
 
         Ok((Self(header), remainder))
     }
@@ -176,7 +156,8 @@ impl Header {
     /// - 3 = reserved
     /// - 4 = notify (NOTIFY, RFC 1996)
     /// - 5 = update (UPDATE, RFC 2136)
-    /// - 6-15 = reserved for future use
+    /// - 6 = DNS stateful operations (DSO, RFC 8490)
+    /// - 7-15 = unassigned
     #[inline]
     pub fn opcode(&self) -> u8 {
         (self.0[2] >> 3) & 0x0F
@@ -219,6 +200,11 @@ impl Header {
             3 => ResponseCode::NameError,
             4 => ResponseCode::NotImplemented,
             5 => ResponseCode::Refused,
+            6 => ResponseCode::YXDomain,
+            7 => ResponseCode::YXRRSet,
+            8 => ResponseCode::NXRRSet,
+            9 => ResponseCode::NotAuth,
+            10 => ResponseCode::NotZone,
             _ => ResponseCode::Reserved,
         }
     }
