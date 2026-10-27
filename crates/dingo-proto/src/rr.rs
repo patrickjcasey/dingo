@@ -153,38 +153,25 @@ impl<'a> ResourceRecord<'a> {
         self.rtype == 41
     }
 
-    /// For A records, returns the IPv4 address as a 4-byte array.
+    /// For A records, returns the IPv4 address.
     ///
     /// Returns `None` if this is not an A record or RDATA is malformed.
     #[inline]
     pub fn as_ipv4(&self) -> Option<Ipv4Addr> {
-        if self.rtype == 1 && self.rdata.len() == 4 {
-            Some(Ipv4Addr::new(
-                self.rdata[0],
-                self.rdata[1],
-                self.rdata[2],
-                self.rdata[3],
-            ))
+        if self.rtype == 1 {
+            <[u8; 4]>::try_from(self.rdata).ok().map(Ipv4Addr::from)
         } else {
             None
         }
     }
 
-    /// For AAAA records, returns the IPv6 address as a 16-byte array.
+    /// For AAAA records, returns the IPv6 address.
     ///
     /// Returns `None` if this is not an AAAA record or RDATA is malformed.
     #[inline]
     pub fn as_ipv6(&self) -> Option<Ipv6Addr> {
-        if self.rtype == 28 && self.rdata.len() == 16 {
-            let a = u16::from_be_bytes([self.rdata[0], self.rdata[1]]);
-            let b = u16::from_be_bytes([self.rdata[2], self.rdata[3]]);
-            let c = u16::from_be_bytes([self.rdata[4], self.rdata[5]]);
-            let d = u16::from_be_bytes([self.rdata[6], self.rdata[7]]);
-            let e = u16::from_be_bytes([self.rdata[8], self.rdata[9]]);
-            let f = u16::from_be_bytes([self.rdata[10], self.rdata[11]]);
-            let g = u16::from_be_bytes([self.rdata[12], self.rdata[13]]);
-            let h = u16::from_be_bytes([self.rdata[14], self.rdata[15]]);
-            Some(Ipv6Addr::new(a, b, c, d, e, f, g, h))
+        if self.rtype == 28 {
+            <[u8; 16]>::try_from(self.rdata).ok().map(Ipv6Addr::from)
         } else {
             None
         }
@@ -318,25 +305,29 @@ impl ResourceRecordOwned {
         self.rtype == 41
     }
 
-    /// For A records, returns the IPv4 address as a 4-byte array.
+    /// For A records, returns the IPv4 address.
     ///
     /// Returns `None` if this is not an A record or RDATA is malformed.
     #[inline]
-    pub fn as_ipv4(&self) -> Option<[u8; 4]> {
-        if self.rtype == 1 && self.rdata.len() == 4 {
-            Some([self.rdata[0], self.rdata[1], self.rdata[2], self.rdata[3]])
+    pub fn as_ipv4(&self) -> Option<Ipv4Addr> {
+        if self.rtype == 1 {
+            <[u8; 4]>::try_from(self.rdata.as_slice())
+                .ok()
+                .map(Ipv4Addr::from)
         } else {
             None
         }
     }
 
-    /// For AAAA records, returns the IPv6 address as a 16-byte array.
+    /// For AAAA records, returns the IPv6 address.
     ///
     /// Returns `None` if this is not an AAAA record or RDATA is malformed.
     #[inline]
-    pub fn as_ipv6(&self) -> Option<[u8; 16]> {
-        if self.rtype == 28 && self.rdata.len() == 16 {
-            self.rdata.as_slice().try_into().ok()
+    pub fn as_ipv6(&self) -> Option<Ipv6Addr> {
+        if self.rtype == 28 {
+            <[u8; 16]>::try_from(self.rdata.as_slice())
+                .ok()
+                .map(Ipv6Addr::from)
         } else {
             None
         }
@@ -431,7 +422,9 @@ mod tests {
         assert_eq!(rr.rtype, 28); // AAAA
         assert_eq!(rr.rdlength, 16);
         assert!(rr.is_aaaa());
-        assert!(rr.as_ipv6().is_some());
+        let expected = Ipv6Addr::new(0x2001, 0x0db8, 0, 0, 0, 0, 0, 1);
+        assert_eq!(rr.as_ipv6(), Some(expected));
+        assert_eq!(rr.into_owned().as_ipv6(), Some(expected));
         assert_eq!(end_offset, data.len()); // 5 + 10 + 16 = 31
     }
 
@@ -893,7 +886,7 @@ mod tests {
         assert_eq!(owned.ttl, 60);
         assert_eq!(owned.rdata, [1, 2, 3, 4]);
         assert!(owned.is_a());
-        assert_eq!(owned.as_ipv4(), Some([1, 2, 3, 4]));
+        assert_eq!(owned.as_ipv4(), Some(Ipv4Addr::new(1, 2, 3, 4)));
     }
 
     #[test]
@@ -905,14 +898,14 @@ mod tests {
             0x00, 0x01,                   // CLASS = IN
             0x00, 0x00, 0x00, 0x3C,       // TTL = 60
             0x00, 0x04,                   // RDLENGTH = 4
-            0x08, 0x08, 0x08, 0x08,       // RDATA = 8.8.8.8
+            0xC0, 0x00, 0x02, 0x0A,       // RDATA = 192.0.2.10
         ];
 
         let (rr, end_offset) = ResourceRecordOwned::parse(&data, 0).unwrap();
 
         assert_eq!(rr.name.to_string(), ".");
         assert_eq!(rr.rtype, 1);
-        assert_eq!(rr.as_ipv4(), Some([8, 8, 8, 8]));
+        assert_eq!(rr.as_ipv4(), Some(Ipv4Addr::new(192, 0, 2, 10)));
         assert_eq!(end_offset, data.len());
     }
 }

@@ -491,21 +491,21 @@ mod tests {
             0x00, 0x01, 0x00, 0x01,
             0x00, 0x00, 0x00, 0x3C,
             0x00, 0x04,
-            0x01, 0x01, 0x01, 0x01, // 1.1.1.1
+            0xC6, 0x33, 0x64, 0x07, // 198.51.100.7
             // Answer 2
             0xC0, 0x0C,             // pointer to "www."
             0x00, 0x01, 0x00, 0x01,
             0x00, 0x00, 0x00, 0x3C,
             0x00, 0x04,
-            0x08, 0x08, 0x08, 0x08, // 8.8.8.8
+            0xCB, 0x00, 0x71, 0x2A, // 203.0.113.42
         ];
 
         let msg = Message::parse(&packet).unwrap();
 
         let answers: Vec<_> = msg.answers().collect();
         assert_eq!(answers.len(), 2);
-        assert_eq!(answers[0].as_ipv4(), Some(Ipv4Addr::new(1, 1, 1, 1)));
-        assert_eq!(answers[1].as_ipv4(), Some(Ipv4Addr::new(8, 8, 8, 8)));
+        assert_eq!(answers[0].as_ipv4(), Some(Ipv4Addr::new(198, 51, 100, 7)));
+        assert_eq!(answers[1].as_ipv4(), Some(Ipv4Addr::new(203, 0, 113, 42)));
     }
 
     #[test]
@@ -877,7 +877,10 @@ mod tests {
         assert_eq!(owned.questions.len(), 1);
         assert_eq!(owned.questions[0].name.to_string(), "example.com.");
         assert_eq!(owned.answers.len(), 1);
-        assert_eq!(owned.answers[0].as_ipv4(), Some([93, 184, 216, 34]));
+        assert_eq!(
+            owned.answers[0].as_ipv4(),
+            Some(Ipv4Addr::new(93, 184, 216, 34))
+        );
     }
 
     #[test]
