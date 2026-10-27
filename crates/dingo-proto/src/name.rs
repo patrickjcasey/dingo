@@ -7,9 +7,6 @@ use alloc::vec::Vec;
 
 use crate::ParseError;
 
-/// Maximum length of a single label (63 octets per RFC 1035).
-pub const MAX_LABEL_LENGTH: usize = 63;
-
 /// Maximum length of a domain name (255 octets per RFC 1035).
 pub const MAX_NAME_LENGTH: usize = 255;
 
@@ -93,10 +90,6 @@ impl<'a> Name<'a> {
 
                     let label_len = length as usize;
 
-                    if label_len > MAX_LABEL_LENGTH {
-                        return Err(ParseError::LabelLengthTooLong);
-                    }
-
                     total_len += label_len + 1;
                     if total_len > MAX_NAME_LENGTH {
                         return Err(ParseError::NameTooLong);
@@ -136,8 +129,9 @@ impl<'a> Name<'a> {
                     pos = ptr_offset;
                 }
                 _ => {
-                    // 0x40-0x7F and 0x80-0xBF are reserved
-                    return Err(ParseError::LabelLengthTooLong);
+                    // 0x40-0x7F (extended label types, RFC 6891) and 0x80-0xBF are
+                    // not supported. This also covers lengths above 63.
+                    return Err(ParseError::UnsupportedLabelType);
                 }
             }
         }
@@ -367,7 +361,7 @@ impl<'a> Iterator for LabelIter<'a> {
                 }
                 _ => {
                     self.done = true;
-                    return Some(Err(ParseError::LabelLengthTooLong));
+                    return Some(Err(ParseError::UnsupportedLabelType));
                 }
             }
         }
@@ -627,8 +621,8 @@ mod tests {
 
         let result = Name::parse(&data, 0);
         assert!(
-            matches!(result, Err(ParseError::LabelLengthTooLong)),
-            "Expected InvalidLabelLength, got {result:?}"
+            matches!(result, Err(ParseError::UnsupportedLabelType)),
+            "Expected UnsupportedLabelType, got {result:?}"
         );
     }
 
@@ -639,8 +633,20 @@ mod tests {
 
         let result = Name::parse(&data, 0);
         assert!(
-            matches!(result, Err(ParseError::LabelLengthTooLong)),
-            "Expected InvalidLabelLength for reserved bits, got {result:?}"
+            matches!(result, Err(ParseError::UnsupportedLabelType)),
+            "Expected UnsupportedLabelType for reserved bits, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn test_label_type_10_prefix_rejected() {
+        // Length byte 0x80-0xBF uses the reserved "10" label type
+        let data = [0x80, 0x00];
+
+        let result = Name::parse(&data, 0);
+        assert!(
+            matches!(result, Err(ParseError::UnsupportedLabelType)),
+            "Expected UnsupportedLabelType for 0x80 prefix, got {result:?}"
         );
     }
 
