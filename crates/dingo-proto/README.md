@@ -50,7 +50,7 @@ let packet = [
 let message = Message::parse(&packet).unwrap();
 ```
 
-## Features flags
+## Feature flags
 
 - `std` — adds a `std::error::Error` implementation for `ParseError`.
 

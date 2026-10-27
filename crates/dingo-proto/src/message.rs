@@ -28,9 +28,9 @@ pub struct Message<'a> {
     questions_offset: usize,
     /// offset where the answers start
     answers_offset: usize,
-    /// offset where `Question` starts
+    /// offset where the authorities start
     authorities_offset: usize,
-    /// offset where `Question` starts
+    /// offset where the additionals start
     additionals_offset: usize,
 }
 

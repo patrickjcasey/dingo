@@ -55,7 +55,7 @@ impl Display for ParseError {
             ParseError::NameTooLong => write!(f, "domain name exceeds 255 octets"),
             ParseError::RdataOverflow => write!(f, "RDLENGTH exceeds remaining packet"),
             ParseError::InvalidRdataLength => write!(f, "RDLENGTH invalid for record type"),
-            ParseError::InvalidRecordCount => write!(f, "record count mismatch"),
+            ParseError::InvalidRecordCount => write!(f, "record count exceeds records in packet"),
         }
     }
 }
