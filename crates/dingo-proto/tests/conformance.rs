@@ -1,4 +1,4 @@
-use dingo_proto::{Header, Message, ParseError};
+use dingo_proto::{Header, Message, ParseError, ResponseCode};
 use pcap_parser::traits::PcapReaderIterator;
 use pcap_parser::{LegacyPcapReader, PcapBlockOwned, PcapError};
 use std::fs::File;
@@ -710,41 +710,28 @@ fn test_valid_edns_with_options() {
     assert_eq!(opt.rdata.len(), 8);
 }
 
-// The parser uses strict validation for headers per RFC 1035:
-// - Reserved Z bit (bit 9) must be zero (AD/CD bits 10-11 are allowed per RFC 4035)
-// - OPCODE must be in known range (0-5)
-// - RCODE must be in known range (0-10)
-/// Test that headers with reserved Z bit set are rejected
+// The parser does not validate the OPCODE, RCODE, or Z bit; unassigned values
+// are passed through for the caller to interpret, matching hickory and domain.
+/// Test that headers with the reserved Z bit set are accepted
 #[test]
-fn test_header_reserved_z_bit_rejected() {
+fn test_header_reserved_z_bit_accepted() {
     #[rustfmt::skip]
     let packet = [
         // Header
         0x12, 0x34,             // ID = 0x1234
-        0x01, 0x00,             // Flags: RD=1
+        0x01, 0x40,             // Flags: RD=1, Z=1
         0x00, 0x00,             // QDCOUNT = 0
         0x00, 0x00,             // ANCOUNT = 0
         0x00, 0x00,             // NSCOUNT = 0
         0x00, 0x00,             // ARCOUNT = 0
     ];
 
-    // First verify normal header parses
-    let (header, _) = Header::parse(&packet).expect("normal header should parse");
+    let (header, _) = Header::parse(&packet).expect("header with Z bit should parse");
     assert_eq!(header.id(), 0x1234);
-
-    // Set only the reserved Z bit (bit 9, 0x40 in byte 3)
-    let mut packet_with_reserved_z = packet;
-    packet_with_reserved_z[3] |= 0x40;
-
-    let result = Header::parse(&packet_with_reserved_z);
-    assert_eq!(
-        result,
-        Err(ParseError::ReservedHeaderBit),
-        "Header with reserved Z bit should be rejected"
-    );
+    assert!(header.recursion_desired());
 }
 
-/// Test that DNSSEC AD/CD bits are allowed (they're not the reserved bit)
+/// Test that DNSSEC AD/CD bits are allowed
 #[test]
 fn test_header_dnssec_bits_allowed() {
     #[rustfmt::skip]
@@ -758,7 +745,7 @@ fn test_header_dnssec_bits_allowed() {
         0x00, 0x00,             // ARCOUNT = 0
     ];
 
-    // Set AD bit (0x20) and CD bit (0x10) - these are DNSSEC flags, not reserved
+    // Set AD bit (0x20) and CD bit (0x10)
     packet[3] |= 0x30; // AD + CD
 
     let result = Header::parse(&packet);
@@ -768,45 +755,10 @@ fn test_header_dnssec_bits_allowed() {
     );
 }
 
-/// Test that headers with reserved opcodes are rejected
+/// Test that every opcode (0-15) is accepted, including DSO (6) and unassigned values
 #[test]
-fn test_header_reserved_opcode_rejected() {
-    #[rustfmt::skip]
-    let mut packet = [
-        // Header
-        0x12, 0x34,             // ID
-        0x00, 0x00,             // Flags (will modify opcode)
-        0x00, 0x00,             // QDCOUNT = 0
-        0x00, 0x00,             // ANCOUNT = 0
-        0x00, 0x00,             // NSCOUNT = 0
-        0x00, 0x00,             // ARCOUNT = 0
-    ];
-
-    // Opcode is bits 3-6 of byte 2 (0x78 mask, shifted right by 3)
-    // Set opcode to 6 (first reserved value, 6-15 are reserved)
-    packet[2] = 0x30; // opcode = 6
-
-    let result = Header::parse(&packet);
-    assert_eq!(
-        result,
-        Err(ParseError::InvalidOpcode),
-        "Header with reserved opcode 6 should be rejected"
-    );
-
-    // Also test opcode 15
-    packet[2] = 0x78; // opcode = 15
-    let result = Header::parse(&packet);
-    assert_eq!(
-        result,
-        Err(ParseError::InvalidOpcode),
-        "Header with reserved opcode 15 should be rejected"
-    );
-}
-
-/// Test that valid opcodes are accepted (0-5)
-#[test]
-fn test_header_valid_opcodes_accepted() {
-    for opcode in 0..=5u8 {
+fn test_header_all_opcodes_accepted() {
+    for opcode in 0..=15u8 {
         #[rustfmt::skip]
         let mut packet = [
             0x12, 0x34,             // ID
@@ -817,6 +769,7 @@ fn test_header_valid_opcodes_accepted() {
             0x00, 0x00,             // ARCOUNT
         ];
 
+        // Opcode is bits 3-6 of byte 2 (0x78 mask, shifted right by 3)
         packet[2] = opcode << 3;
 
         let result = Header::parse(&packet);
@@ -827,45 +780,24 @@ fn test_header_valid_opcodes_accepted() {
     }
 }
 
-/// Test that headers with reserved RCODE values are rejected
+/// Test that every RCODE (0-15) is accepted and mapped to the right variant
 #[test]
-fn test_header_reserved_rcode_rejected() {
-    #[rustfmt::skip]
-    let mut packet = [
-        // Header
-        0x12, 0x34,             // ID
-        0x80, 0x00,             // Flags: QR=1 (response)
-        0x00, 0x00,             // QDCOUNT = 0
-        0x00, 0x00,             // ANCOUNT = 0
-        0x00, 0x00,             // NSCOUNT = 0
-        0x00, 0x00,             // ARCOUNT = 0
+fn test_header_all_rcodes_accepted() {
+    let expected = [
+        ResponseCode::NoErrorCondition,
+        ResponseCode::FormatError,
+        ResponseCode::ServerFailure,
+        ResponseCode::NameError,
+        ResponseCode::NotImplemented,
+        ResponseCode::Refused,
+        ResponseCode::YXDomain,
+        ResponseCode::YXRRSet,
+        ResponseCode::NXRRSet,
+        ResponseCode::NotAuth,
+        ResponseCode::NotZone,
     ];
 
-    // RCODE is bits 0-3 of byte 3 (0x0F mask)
-    // Set RCODE to 11 (first reserved value, 11-15 are reserved)
-    packet[3] = 0x0B;
-
-    let result = Header::parse(&packet);
-    assert_eq!(
-        result,
-        Err(ParseError::InvalidResponseCode),
-        "Header with reserved RCODE 11 should be rejected"
-    );
-
-    // Also test RCODE 15
-    packet[3] = 0x0F;
-    let result = Header::parse(&packet);
-    assert_eq!(
-        result,
-        Err(ParseError::InvalidResponseCode),
-        "Header with reserved RCODE 15 should be rejected"
-    );
-}
-
-/// Test that valid RCODEs are accepted (0-10)
-#[test]
-fn test_header_valid_rcodes_accepted() {
-    for rcode in 0..=10u8 {
+    for rcode in 0..=15u8 {
         #[rustfmt::skip]
         let mut packet = [
             0x12, 0x34,             // ID
@@ -876,10 +808,18 @@ fn test_header_valid_rcodes_accepted() {
             0x00, 0x00,             // ARCOUNT
         ];
 
+        // RCODE is bits 0-3 of byte 3 (0x0F mask)
         packet[3] = rcode;
 
         let result = Header::parse(&packet);
         assert!(result.is_ok(), "RCODE {rcode} should be accepted");
+
+        let (header, _) = result.unwrap();
+        let want = expected
+            .get(rcode as usize)
+            .cloned()
+            .unwrap_or(ResponseCode::Reserved);
+        assert_eq!(header.response_code(), want, "RCODE {rcode}");
     }
 }
 
