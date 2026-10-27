@@ -332,6 +332,7 @@ fn test_wireshark_wiki_zlip1() {
                 matches!(
                     e,
                     ParseError::CompressionPointerLoop
+                        | ParseError::TooManyCompressionPointers
                         | ParseError::CompressionPointerOutOfBounds
                         | ParseError::CompressionPointerForward
                         | ParseError::BufferTooShort
@@ -373,6 +374,7 @@ fn test_wireshark_wiki_zlip2() {
                 matches!(
                     e,
                     ParseError::CompressionPointerLoop
+                        | ParseError::TooManyCompressionPointers
                         | ParseError::CompressionPointerOutOfBounds
                         | ParseError::CompressionPointerForward
                         | ParseError::BufferTooShort
@@ -416,6 +418,7 @@ fn test_wireshark_wiki_zlip3() {
                     e,
                     ParseError::NameTooLong
                         | ParseError::CompressionPointerLoop
+                        | ParseError::TooManyCompressionPointers
                         | ParseError::CompressionPointerOutOfBounds
                         | ParseError::CompressionPointerForward
                         | ParseError::BufferTooShort
