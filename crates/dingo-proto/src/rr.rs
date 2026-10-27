@@ -99,7 +99,9 @@ impl<'a> ResourceRecord<'a> {
         pos += Self::FIXED_FIELDS_LEN;
         let rdlength_usize = rdlength as usize;
 
-        if pos + rdlength_usize > packet.len() {
+        // `pos <= packet.len()` after the fixed-field check; comparing against the
+        // remaining length avoids overflowing `pos + rdlength` on 16-bit targets.
+        if rdlength_usize > packet.len() - pos {
             return Err(ParseError::RdataOverflow);
         }
 
