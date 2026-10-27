@@ -161,9 +161,11 @@ impl<'a> Name<'a> {
     }
 
     /// Returns true if this is the root domain (empty name).
+    ///
+    /// Follows compression pointers, so a pointer to a root label is also root.
     #[inline]
     pub fn is_root(&self) -> bool {
-        self.start < self.packet.len() && self.packet[self.start] == 0
+        self.labels().next().is_none()
     }
 
     /// Returns the total length of this name when encoded (without compression).
@@ -531,6 +533,19 @@ mod tests {
         assert_eq!(name.to_string(), ".");
         assert_eq!(name.labels().count(), 0);
         assert_eq!(next_offset, data.len());
+    }
+
+    #[test]
+    fn test_is_root_follows_pointer() {
+        // Root label at offset 0, pointer to it at offset 1, "com." at offset 3
+        let data = [0x00, 0xC0, 0x00, 0x03, b'c', b'o', b'm', 0x00];
+
+        let (compressed_root, _) = Name::parse(&data, 1).unwrap();
+        assert!(compressed_root.is_root());
+        assert!(compressed_root.into_owned().is_root());
+
+        let (com, _) = Name::parse(&data, 3).unwrap();
+        assert!(!com.is_root());
     }
 
     #[test]
