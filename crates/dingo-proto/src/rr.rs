@@ -235,7 +235,7 @@ impl<'a> From<ResourceRecord<'a>> for ResourceRecordOwned {
 /// Resource records contain the actual DNS data such as IP addresses,
 /// name server information, mail exchange records, etc. This owned variant
 /// stores the name and RDATA in allocated memory.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ResourceRecordOwned {
     /// The domain name to which this record pertains.
     pub name: NameOwned,

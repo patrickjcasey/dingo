@@ -282,7 +282,7 @@ impl ExactSizeIterator for ResourceRecordIter<'_> {}
 /// - Answer section: resource records answering the question
 /// - Authority section: resource records pointing to authoritative name servers
 /// - Additional section: resource records with additional information
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct MessageOwned {
     /// The DNS header containing flags and section counts.
     pub header: Header,
@@ -991,5 +991,12 @@ mod tests {
         different_ttl[30] = 0x3D;
         let c = Message::parse(&different_ttl).unwrap();
         assert_ne!(a, c);
+
+        // Owned types hash consistently with their equality
+        let (a, b) = (a.into_owned(), b.into_owned());
+        assert_eq!(a, b);
+        assert_eq!(hash_of(&a), hash_of(&b));
+        assert_eq!(hash_of(&a.questions[0]), hash_of(&b.questions[0]));
+        assert_eq!(hash_of(&a.answers[0]), hash_of(&b.answers[0]));
     }
 }
