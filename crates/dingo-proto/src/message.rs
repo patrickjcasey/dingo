@@ -15,7 +15,10 @@ use crate::{Header, ParseError, QR, ResponseCode};
 /// [`parse`](Self::parse) validates the entire packet upfront without
 /// allocating; the section iterators then yield records directly from the
 /// packet data, so iteration is infallible.
-#[derive(Debug, PartialEq, Eq, Hash)]
+///
+/// Equality and hashing compare the header and the parsed sections, so
+/// messages that differ only in name case or compression are equal.
+#[derive(Debug)]
 pub struct Message<'a> {
     /// The DNS header containing flags and section counts.
     pub header: Header,
@@ -82,7 +85,7 @@ impl<'a> Message<'a> {
     pub fn questions(&self) -> QuestionIter<'a> {
         QuestionIter {
             packet: self.packet,
-            offset: Header::SIZE,
+            offset: self.questions_offset,
             remaining: self.header.qdcount(),
         }
     }
@@ -177,6 +180,28 @@ impl Message<'_> {
             authorities: self.authorities().map(|rr| rr.into_owned()).collect(),
             additionals: self.additionals().map(|rr| rr.into_owned()).collect(),
         }
+    }
+}
+
+impl PartialEq for Message<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.header == other.header
+            && self.questions().eq(other.questions())
+            && self.answers().eq(other.answers())
+            && self.authorities().eq(other.authorities())
+            && self.additionals().eq(other.additionals())
+    }
+}
+
+impl Eq for Message<'_> {}
+
+impl core::hash::Hash for Message<'_> {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+        self.header.hash(state);
+        self.questions().for_each(|q| q.hash(state));
+        self.answers().for_each(|rr| rr.hash(state));
+        self.authorities().for_each(|rr| rr.hash(state));
+        self.additionals().for_each(|rr| rr.hash(state));
     }
 }
 
@@ -925,5 +950,46 @@ mod tests {
         // Parser may succeed or fail depending on implementation choice
         // Either is acceptable, but it must not panic
         let _ = Message::parse(&packet);
+    }
+
+    #[test]
+    fn test_message_eq_ignores_case_and_compression() {
+        use crate::name::tests::hash_of;
+
+        // Answer name compressed, lowercase
+        #[rustfmt::skip]
+        let compressed = [
+            0x12, 0x34, 0x81, 0x80,
+            0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+            0x03, b'c', b'o', b'm', 0x00,
+            0x00, 0x01, 0x00, 0x01,
+            0xC0, 0x0C,             // pointer to "com."
+            0x00, 0x01, 0x00, 0x01,
+            0x00, 0x00, 0x00, 0x3C,
+            0x00, 0x04, 1, 2, 3, 4,
+        ];
+        // Same message, names uppercase and answer name spelled out
+        #[rustfmt::skip]
+        let uncompressed = [
+            0x12, 0x34, 0x81, 0x80,
+            0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+            0x03, b'C', b'O', b'M', 0x00,
+            0x00, 0x01, 0x00, 0x01,
+            0x03, b'C', b'o', b'M', 0x00,
+            0x00, 0x01, 0x00, 0x01,
+            0x00, 0x00, 0x00, 0x3C,
+            0x00, 0x04, 1, 2, 3, 4,
+        ];
+
+        let a = Message::parse(&compressed).unwrap();
+        let b = Message::parse(&uncompressed).unwrap();
+        assert_eq!(a, b);
+        assert_eq!(hash_of(&a), hash_of(&b));
+
+        // A different TTL makes the messages unequal
+        let mut different_ttl = compressed;
+        different_ttl[30] = 0x3D;
+        let c = Message::parse(&different_ttl).unwrap();
+        assert_ne!(a, c);
     }
 }

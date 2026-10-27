@@ -479,7 +479,7 @@ impl core::fmt::Display for NameOwned {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use alloc::string::ToString;
     use alloc::vec;
@@ -866,7 +866,7 @@ mod tests {
     }
 
     /// FNV-1a; a deterministic hasher so tests don't depend on `std`.
-    fn hash_of<T: core::hash::Hash>(value: &T) -> u64 {
+    pub(crate) fn hash_of<T: core::hash::Hash>(value: &T) -> u64 {
         use core::hash::Hasher;
 
         struct Fnv(u64);
