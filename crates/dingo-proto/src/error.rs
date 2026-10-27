@@ -31,7 +31,7 @@ pub enum ParseError {
     ///
     /// For example, A records must have RDLENGTH of exactly 4.
     InvalidRdataLength,
-    /// Record count in header doesn't match actual records in packet.
+    /// Header record count is larger than the number of records in the packet.
     InvalidRecordCount,
 }
 

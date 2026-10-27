@@ -46,24 +46,28 @@ impl<'a> Message<'a> {
         let mut offset = Header::SIZE;
         let questions_offset = offset;
         for _ in 0..header.qdcount() {
+            expect_record(packet, offset)?;
             let (_, next_offset) = Question::parse(packet, offset)?;
             offset = next_offset;
         }
 
         let answers_offset = offset;
         for _ in 0..header.ancount() {
+            expect_record(packet, offset)?;
             let (_, next_offset) = ResourceRecord::parse(packet, offset)?;
             offset = next_offset;
         }
 
         let authorities_offset = offset;
         for _ in 0..header.nscount() {
+            expect_record(packet, offset)?;
             let (_, next_offset) = ResourceRecord::parse(packet, offset)?;
             offset = next_offset;
         }
 
         let additionals_offset = offset;
         for _ in 0..header.arcount() {
+            expect_record(packet, offset)?;
             let (_, next_offset) = ResourceRecord::parse(packet, offset)?;
             offset = next_offset;
         }
@@ -202,6 +206,20 @@ impl core::hash::Hash for Message<'_> {
         self.answers().for_each(|rr| rr.hash(state));
         self.authorities().for_each(|rr| rr.hash(state));
         self.additionals().for_each(|rr| rr.hash(state));
+    }
+}
+
+/// Returns [`ParseError::InvalidRecordCount`] if the header promises another
+/// record but the packet has already ended.
+///
+/// A record that starts but is cut short is reported by the record parser as
+/// [`ParseError::BufferTooShort`] instead.
+#[inline]
+fn expect_record(packet: &[u8], offset: usize) -> Result<(), ParseError> {
+    if offset >= packet.len() {
+        Err(ParseError::InvalidRecordCount)
+    } else {
+        Ok(())
     }
 }
 
@@ -789,9 +807,8 @@ mod tests {
             0x00, 0x01, 0x00, 0x01,
         ];
 
-        // Parse validates everything upfront, should fail
         let result = Message::parse(&packet);
-        assert!(result.is_err(), "Expected error for QDCOUNT mismatch");
+        assert_eq!(result, Err(ParseError::InvalidRecordCount));
     }
 
     #[test]
@@ -808,9 +825,27 @@ mod tests {
             // No question follows
         ];
 
-        // Parse validates everything upfront, should fail
         let result = Message::parse(&packet);
-        assert!(result.is_err(), "Expected error for missing questions");
+        assert_eq!(result, Err(ParseError::InvalidRecordCount));
+    }
+
+    #[test]
+    fn test_truncated_record_is_buffer_too_short() {
+        // ANCOUNT=1 and the answer starts, but its fixed fields are cut off
+        #[rustfmt::skip]
+        let packet = [
+            0x00, 0x01,
+            0x80, 0x00,
+            0x00, 0x00,
+            0x00, 0x01,             // ANCOUNT = 1
+            0x00, 0x00,
+            0x00, 0x00,
+            0x03, b'c', b'o', b'm', 0x00,
+            0x00, 0x01,             // TYPE, then nothing
+        ];
+
+        let result = Message::parse(&packet);
+        assert_eq!(result, Err(ParseError::BufferTooShort));
     }
 
     #[test]
