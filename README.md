@@ -34,7 +34,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-dingo-proto = "0.2"
+dingo-proto = "0.3"
 ```
 
 ## Running Tests
