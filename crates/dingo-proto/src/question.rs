@@ -85,7 +85,7 @@ impl<'a> From<Question<'a>> for QuestionOwned {
 ///
 /// The question section contains the domain name being queried, the query type,
 /// and the query class. This owned variant stores the name in allocated memory.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct QuestionOwned {
     /// The domain name being queried.
     pub name: NameOwned,
