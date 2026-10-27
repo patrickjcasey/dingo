@@ -24,7 +24,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-dingo-proto = "0.2"
+dingo-proto = "0.3"
 ```
 
 Parse a DNS message:
@@ -50,7 +50,7 @@ let packet = [
 let message = Message::parse(&packet).unwrap();
 ```
 
-## Features flags
+## Feature flags
 
 - `std` — adds a `std::error::Error` implementation for `ParseError`.
 

@@ -34,7 +34,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-dingo-proto = "0.2"
+dingo-proto = "0.3"
 ```
 
 ## Running Tests
@@ -65,6 +65,17 @@ To download additional test samples from the Wireshark wiki:
 # Run all workspace tests
 cargo test --workspace
 ```
+
+## Security
+
+This parser is designed to safely handle malformed input. The test suite includes
+checks for known DNS parsing vulnerabilities:
+
+- **Compression pointer loops** (CVE-2018-20994, CVE-2017-14339)
+- **Compression pointer out-of-bounds** (NAME:WRECK)
+- **Label/name length overflow** (RFC 9267)
+- **RDLENGTH validation** (RFC 9267)
+- **Record count validation** (RFC 9267)
 
 ## Fuzzing
 
@@ -110,17 +121,6 @@ cp testdata/dns-fuzzing/packet/*.pkt fuzz/corpus/parse_message/
 ## Updating Test Data
 
 This project uses git submodules for external test data sources.
-
-## Security
-
-This parser is designed to safely handle malformed input. The test suite includes
-checks for known DNS parsing vulnerabilities:
-
-- **Compression pointer loops** (CVE-2018-20994, CVE-2017-14339)
-- **Compression pointer out-of-bounds** (NAME:WRECK)
-- **Label/name length overflow** (RFC 9267)
-- **RDLENGTH validation** (RFC 9267)
-- **Record count validation** (RFC 9267)
 
 ### Submodules
 

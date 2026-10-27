@@ -408,17 +408,18 @@ impl NameOwned {
     ///
     /// # Arguments
     ///
-    /// * `data` - The complete DNS packet data (needed for compression pointers)
-    /// * `offset` - The offset within `data` where the name starts
+    /// * `packet` - The complete DNS packet data (needed for compression pointers)
+    /// * `offset` - The offset within `packet` where the name starts
     ///
     /// # Errors
     ///
     /// Returns an error if:
     /// - The buffer is too short
-    /// - A compression pointer creates a loop
+    /// - A compression pointer points to itself
+    /// - More than 128 compression pointers are followed
     /// - A compression pointer points out of bounds
     /// - A compression pointer points forward
-    /// - A label exceeds 63 octets
+    /// - A label uses a reserved label type or is longer than 63 octets
     /// - The decompressed name exceeds 255 octets
     pub fn parse(packet: &[u8], offset: usize) -> Result<(Self, usize), ParseError> {
         let (name, end) = Name::parse(packet, offset)?;
