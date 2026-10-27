@@ -336,6 +336,7 @@ fn test_wireshark_wiki_zlip1() {
                         | ParseError::CompressionPointerOutOfBounds
                         | ParseError::CompressionPointerForward
                         | ParseError::BufferTooShort
+                        | ParseError::InvalidRecordCount
                         | ParseError::NameTooLong
                 ),
                 "Expected compression-related error, got {e:?}"
@@ -378,6 +379,7 @@ fn test_wireshark_wiki_zlip2() {
                         | ParseError::CompressionPointerOutOfBounds
                         | ParseError::CompressionPointerForward
                         | ParseError::BufferTooShort
+                        | ParseError::InvalidRecordCount
                         | ParseError::NameTooLong
                 ),
                 "Expected compression-related error, got {e:?}"
@@ -422,6 +424,7 @@ fn test_wireshark_wiki_zlip3() {
                         | ParseError::CompressionPointerOutOfBounds
                         | ParseError::CompressionPointerForward
                         | ParseError::BufferTooShort
+                        | ParseError::InvalidRecordCount
                 ),
                 "Expected name length or compression error, got {e:?}"
             );
